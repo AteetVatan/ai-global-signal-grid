@@ -1,6 +1,5 @@
 """
-MASX Agentic AI System
-
+Global Signal Grid (GSG)
 A modular, multi-agent system for geopolitical intelligence gathering.
 Powered by LangGraph, CrewAI, and AutoGen for collaborative reasoning.
 
