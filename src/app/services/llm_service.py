@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import tiktoken
 from openai import OpenAI
-from langchain_openai import ChatOpenAI as LangChainOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from ..config.settings import get_settings
@@ -53,7 +53,7 @@ class LLMService:
         self._init_provider()
 
         # Token counting
-        self.tokenizer = tiktoken.encoding_for_model("gpt-4")
+        self.tokenizer = self.__safe_encoding_for_model()
 
         # Cost tracking
         self.total_tokens = 0
@@ -66,7 +66,12 @@ class LLMService:
                 raise ConfigurationException("OpenAI not configured")
 
             config = self.settings.get_llm_config("openai")
-            self.client = OpenAI(api_key=config["api_key"])
+            #self.client = OpenAI(api_key=config["api_key"]) #old way
+            self.client = ChatOpenAI(
+                model_name=config["model"],
+                openai_api_key=config["api_key"],
+                temperature=config["temperature"],
+            )
             self.model = config["model"]
             self.temperature = config["temperature"]
             self.max_tokens = config["max_tokens"]
@@ -76,7 +81,7 @@ class LLMService:
                 raise ConfigurationException("Mistral not configured")
 
             config = self.settings.get_llm_config("mistral")
-            self.client = LangChainOpenAI(
+            self.client = ChatOpenAI(
                 model_name=config["model"],
                 openai_api_base=config["api_base"],
                 openai_api_key=config["api_key"],
@@ -84,7 +89,8 @@ class LLMService:
             )
             self.model = config["model"]
             self.temperature = config["temperature"]
-            self.max_tokens = 4000  # Mistral default
+            self.max_tokens =  config["max_tokens"]
+            self.token_ref = config["token_ref"]
 
         else:
             raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")
@@ -285,3 +291,13 @@ class LLMService:
         """Reset usage statistics."""
         self.total_tokens = 0
         self.total_cost = 0.0
+        
+    def __safe_encoding_for_model(self):
+        try:
+            return tiktoken.encoding_for_model(self.model)
+        except KeyError:
+            # fallback to default tokenizer
+            if self.token_ref:
+                return tiktoken.get_encoding(self.token_ref)
+            else:
+                return tiktoken.get_encoding(self.model)
