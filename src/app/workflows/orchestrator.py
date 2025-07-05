@@ -1,0 +1,598 @@
+"""
+Main orchestrator for Global Signal Grid (MASX) Agentic AI System.
+
+Coordinates multi-agent workflows using LangGraph with:
+- Agent execution coordination and state management
+- Parallel processing where possible
+- Error handling and recovery mechanisms
+- Workflow monitoring and logging
+
+Usage: from app.workflows.orchestrator import MASXOrchestrator    
+    orchestrator = MASXOrchestrator()
+    result = orchestrator.run_daily_workflow()
+"""
+import asyncio
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolExecutor
+from langchain_core.runnables import RunnableLambda
+
+from ..core.state import MASXState, AgentState, WorkflowState
+from ..core.exceptions import WorkflowException
+from ..core.utils import generate_run_id, measure_execution_time
+from ..config.logging_config import get_workflow_logger, log_workflow_step
+from ..config.settings import get_settings
+
+
+class MASXOrchestrator:
+    """
+    Main orchestrator for coordinating multi-agent workflows.    
+    Manages:
+    - Agent execution and coordination
+    - State transitions and validation
+    - Parallel processing where applicable
+    - Error handling and recovery
+    - Workflow monitoring and logging
+    """
+    
+    def __init__(self):
+        """Initialize the MASX orchestrator."""
+        self.settings = get_settings()
+        self.logger = get_workflow_logger("MASXOrchestrator")
+        self.agents = {}
+        self.workflows = {}
+        self._initialize_agents()
+    
+    def _initialize_agents(self):
+        """Initialize all available agents."""
+        try:
+            from ..agents import (
+                DomainClassifier,
+                QueryPlanner,
+                NewsFetcher,
+                EventFetcher,
+                MergeDeduplicator,
+                LanguageResolver,
+                Translator,
+                EntityExtractor,
+                EventAnalyzer,
+                FactChecker,
+                Validator,
+                MemoryManager,
+                LoggingAuditor,
+            )
+            
+            # Initialize agents
+            self.agents = {
+                "domain_classifier": DomainClassifier(),
+                "query_planner": QueryPlanner(),
+                "news_fetcher": NewsFetcher(),
+                "event_fetcher": EventFetcher(),
+                "merge_deduplicator": MergeDeduplicator(),
+                "language_resolver": LanguageResolver(),
+                "translator": Translator(),
+                "entity_extractor": EntityExtractor(),
+                "event_analyzer": EventAnalyzer(),
+                "fact_checker": FactChecker(),
+                "validator": Validator(),
+                "memory_manager": MemoryManager(),
+                "logging_auditor": LoggingAuditor(),
+            }
+            
+            self.logger.info(
+                "Agents initialized",
+                agent_count=len(self.agents),
+                agent_names=list(self.agents.keys())
+            )
+            
+        except ImportError as e:
+            self.logger.warning(f"Some agents not available: {e}")
+            # Initialize with available agents only
+            self.agents = {}
+    
+    def create_workflow_graph(self, workflow_type: str = "daily") -> StateGraph:
+        """
+        Create a LangGraph workflow based on type.        
+        Args: workflow_type: Type of workflow ('daily', 'detection', 'trigger')
+        Returns: StateGraph: Configured workflow graph
+        """
+        if workflow_type == "daily": # normal signal processing flow
+            return self._create_daily_workflow()
+        elif workflow_type == "detection": #anomaly detection
+            return self._create_detection_workflow()
+        elif workflow_type == "trigger": #re-execution loop until termination
+            return self._create_trigger_workflow()
+        else:
+            raise WorkflowException(f"Unknown workflow type: {workflow_type}")
+    
+    def _create_daily_workflow(self) -> StateGraph:
+        """Create the main daily workflow graph."""
+        workflow = StateGraph(MASXState)
+        
+        # Add nodes for each workflow step
+        workflow.add_node("start", self._start_workflow)
+        workflow.add_node("domain_classification", self._run_domain_classifier)
+        workflow.add_node("query_planning", self._run_query_planner)
+        workflow.add_node("data_fetching", self._run_data_fetchers)
+        workflow.add_node("merge_deduplication", self._run_merge_deduplicator)
+        workflow.add_node("language_processing", self._run_language_processing)
+        workflow.add_node("entity_extraction", self._run_entity_extractor)
+        workflow.add_node("event_analysis", self._run_event_analyzer)
+        workflow.add_node("fact_checking", self._run_fact_checker)
+        workflow.add_node("validation", self._run_validator)
+        workflow.add_node("memory_storage", self._run_memory_manager)
+        workflow.add_node("end", self._end_workflow)
+        
+        # Define workflow edges
+        workflow.set_entry_point("start")
+        workflow.add_edge("start", "domain_classification")
+        workflow.add_edge("domain_classification", "query_planning")
+        workflow.add_edge("query_planning", "data_fetching")
+        workflow.add_edge("data_fetching", "merge_deduplication")
+        workflow.add_edge("merge_deduplication", "language_processing")
+        workflow.add_edge("language_processing", "entity_extraction")
+        workflow.add_edge("entity_extraction", "event_analysis")
+        workflow.add_edge("event_analysis", "fact_checking")
+        workflow.add_edge("fact_checking", "validation")
+        workflow.add_edge("validation", "memory_storage")
+        workflow.add_edge("memory_storage", "end")
+        workflow.add_edge("end", END)
+        
+        return workflow
+    
+    def _create_detection_workflow(self) -> StateGraph:
+        """Create detection workflow for anomaly handling."""
+        workflow = StateGraph(MASXState)
+        
+        workflow.add_node("detect", self._detect_anomaly)
+        workflow.add_node("classify", self._classify_anomaly)
+        workflow.add_node("resolve", self._resolve_anomaly)
+        workflow.add_node("visualize", self._visualize_result)
+        
+        workflow.set_entry_point("detect")
+        workflow.add_edge("detect", "classify")
+        workflow.add_edge("classify", "resolve")
+        workflow.add_edge("resolve", "visualize")
+        workflow.add_edge("visualize", END)
+        
+        return workflow
+    
+    def _create_trigger_workflow(self) -> StateGraph:
+        """Create trigger workflow for iterative refinement."""
+        workflow = StateGraph(MASXState)
+        
+        workflow.add_node("trigger", self._trigger_workflow)
+        workflow.add_node("delegate", self._delegate_tasks)
+        workflow.add_node("fetch_results", self._fetch_results)
+        workflow.add_node("update_plan", self._update_plan)
+        workflow.add_node("re_execute", self._re_execute)
+        
+        workflow.set_entry_point("trigger")
+        workflow.add_edge("trigger", "delegate")
+        workflow.add_edge("delegate", "fetch_results")
+        workflow.add_edge("fetch_results", "update_plan")
+        workflow.add_conditional_edges(
+            "update_plan",
+            self._should_continue,
+            {
+                "continue": "re_execute",
+                "complete": END
+            }
+        )
+        workflow.add_edge("re_execute", "delegate")
+        
+        return workflow
+    
+    # Workflow step implementations
+    def _start_workflow(self, state: MASXState) -> MASXState:
+        """Initialize workflow state."""
+        run_id = generate_run_id()
+        state.run_id = run_id
+        state.timestamp = datetime.utcnow()
+        state.workflow = WorkflowState(
+            steps=["start", "domain_classification", "query_planning", "data_fetching"],
+            current_step="start"
+        )
+        
+        log_workflow_step(
+            self.logger,
+            "start",
+            "workflow_initialization",
+            output_data={"run_id": run_id},
+            run_id=run_id
+        )
+        
+        return state
+    
+    def _run_domain_classifier(self, state: MASXState) -> MASXState:
+        """Run domain classification step."""
+        try:
+            agent = self.agents.get("domain_classifier")
+            if not agent:
+                raise WorkflowException("DomainClassifier agent not available")
+            
+            # Prepare input data
+            input_data = {
+                "title": state.metadata.get("title", ""),
+                "description": state.metadata.get("description", "")
+            }
+            
+            # Run agent
+            result = agent.run(input_data, run_id=state.run_id)
+            
+            # Update state
+            state.agents["domain_classifier"] = agent.state
+            if result.success:
+                state.metadata["domains"] = result.data.get("domains", [])
+            
+            state.workflow.current_step = "domain_classification"
+            
+            log_workflow_step(
+                self.logger,
+                "domain_classification",
+                "agent_execution",
+                input_data=input_data,
+                output_data=result.data,
+                run_id=state.run_id
+            )
+            
+        except Exception as e:
+            state.errors.append(f"Domain classification failed: {str(e)}")
+            self.logger.error(f"Domain classification error: {e}")
+        
+        return state
+    
+    def _run_query_planner(self, state: MASXState) -> MASXState:
+        """Run query planning step."""
+        try:
+            agent = self.agents.get("query_planner")
+            if not agent:
+                raise WorkflowException("QueryPlanner agent not available")
+            
+            # Prepare input data
+            input_data = {
+                "domains": state.metadata.get("domains", []),
+                "context": state.metadata.get("context", {})
+            }
+            
+            # Run agent
+            result = agent.run(input_data, run_id=state.run_id)
+            
+            # Update state
+            state.agents["query_planner"] = agent.state
+            if result.success:
+                state.metadata["queries"] = result.data.get("queries", [])
+            
+            state.workflow.current_step = "query_planning"
+            
+        except Exception as e:
+            state.errors.append(f"Query planning failed: {str(e)}")
+            self.logger.error(f"Query planning error: {e}")
+        
+        return state
+    
+    def _run_data_fetchers(self, state: MASXState) -> MASXState:
+        """Run data fetching step with parallel execution."""
+        try:
+            queries = state.metadata.get("queries", [])
+            
+            # Run news fetcher and event fetcher in parallel
+            tasks = []
+            
+            # News fetcher task
+            if "news_fetcher" in self.agents:
+                news_task = self._run_agent_async("news_fetcher", {"queries": queries})
+                tasks.append(news_task)
+            
+            # Event fetcher task
+            if "event_fetcher" in self.agents:
+                event_task = self._run_agent_async("event_fetcher", {"queries": queries})
+                tasks.append(event_task)
+            
+            # Wait for all tasks to complete
+            if tasks:
+                results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
+                
+                # Process results
+                for i, result in enumerate(results):
+                    agent_name = ["news_fetcher", "event_fetcher"][i]
+                    if isinstance(result, Exception):
+                        state.errors.append(f"{agent_name} failed: {str(result)}")
+                    else:
+                        state.agents[agent_name] = result
+            
+            state.workflow.current_step = "data_fetching"
+            
+        except Exception as e:
+            state.errors.append(f"Data fetching failed: {str(e)}")
+            self.logger.error(f"Data fetching error: {e}")
+        
+        return state
+    
+    async def _run_agent_async(self, agent_name: str, input_data: Dict[str, Any]) -> AgentState:
+        """Run an agent asynchronously."""
+        agent = self.agents.get(agent_name)
+        if not agent:
+            raise WorkflowException(f"Agent {agent_name} not available")
+        
+        # For now, run synchronously (can be made truly async later)
+        result = agent.run(input_data)
+        return agent.state
+    
+    def _run_merge_deduplicator(self, state: MASXState) -> MASXState:
+        """Run merge and deduplication step."""
+        try:
+            agent = self.agents.get("merge_deduplicator")
+            if not agent:
+                raise WorkflowException("MergeDeduplicator agent not available")
+            
+            # Prepare input data from previous steps
+            input_data = {
+                "news_data": state.agents.get("news_fetcher", {}).get("output"),
+                "event_data": state.agents.get("event_fetcher", {}).get("output")
+            }
+            
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["merge_deduplicator"] = agent.state
+            state.workflow.current_step = "merge_deduplication"
+            
+        except Exception as e:
+            state.errors.append(f"Merge deduplication failed: {str(e)}")
+            self.logger.error(f"Merge deduplication error: {e}")
+        
+        return state
+    
+    def _run_language_processing(self, state: MASXState) -> MASXState:
+        """Run language processing step."""
+        try:
+            # Run language resolver
+            if "language_resolver" in self.agents:
+                agent = self.agents["language_resolver"]
+                input_data = state.agents.get("merge_deduplicator", {}).get("output", {})
+                result = agent.run(input_data, run_id=state.run_id)
+                state.agents["language_resolver"] = agent.state
+            
+            # Run translator if needed
+            if "translator" in self.agents:
+                agent = self.agents["translator"]
+                input_data = state.agents.get("language_resolver", {}).get("output", {})
+                result = agent.run(input_data, run_id=state.run_id)
+                state.agents["translator"] = agent.state
+            
+            state.workflow.current_step = "language_processing"
+            
+        except Exception as e:
+            state.errors.append(f"Language processing failed: {str(e)}")
+            self.logger.error(f"Language processing error: {e}")
+        
+        return state
+    
+    def _run_entity_extractor(self, state: MASXState) -> MASXState:
+        """Run entity extraction step."""
+        try:
+            agent = self.agents.get("entity_extractor")
+            if not agent:
+                raise WorkflowException("EntityExtractor agent not available")
+            
+            input_data = state.agents.get("merge_deduplicator", {}).get("output", {})
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["entity_extractor"] = agent.state
+            state.workflow.current_step = "entity_extraction"
+            
+        except Exception as e:
+            state.errors.append(f"Entity extraction failed: {str(e)}")
+            self.logger.error(f"Entity extraction error: {e}")
+        
+        return state
+    
+    def _run_event_analyzer(self, state: MASXState) -> MASXState:
+        """Run event analysis step."""
+        try:
+            agent = self.agents.get("event_analyzer")
+            if not agent:
+                raise WorkflowException("EventAnalyzer agent not available")
+            
+            input_data = {
+                "articles": state.agents.get("merge_deduplicator", {}).get("output", {}),
+                "entities": state.agents.get("entity_extractor", {}).get("output", {})
+            }
+            
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["event_analyzer"] = agent.state
+            state.workflow.current_step = "event_analysis"
+            
+        except Exception as e:
+            state.errors.append(f"Event analysis failed: {str(e)}")
+            self.logger.error(f"Event analysis error: {e}")
+        
+        return state
+    
+    def _run_fact_checker(self, state: MASXState) -> MASXState:
+        """Run fact checking step."""
+        try:
+            agent = self.agents.get("fact_checker")
+            if not agent:
+                raise WorkflowException("FactChecker agent not available")
+            
+            input_data = state.agents.get("event_analyzer", {}).get("output", {})
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["fact_checker"] = agent.state
+            state.workflow.current_step = "fact_checking"
+            
+        except Exception as e:
+            state.errors.append(f"Fact checking failed: {str(e)}")
+            self.logger.error(f"Fact checking error: {e}")
+        
+        return state
+    
+    def _run_validator(self, state: MASXState) -> MASXState:
+        """Run validation step."""
+        try:
+            agent = self.agents.get("validator")
+            if not agent:
+                raise WorkflowException("Validator agent not available")
+            
+            input_data = state.agents.get("fact_checker", {}).get("output", {})
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["validator"] = agent.state
+            state.workflow.current_step = "validation"
+            
+        except Exception as e:
+            state.errors.append(f"Validation failed: {str(e)}")
+            self.logger.error(f"Validation error: {e}")
+        
+        return state
+    
+    def _run_memory_manager(self, state: MASXState) -> MASXState:
+        """Run memory storage step."""
+        try:
+            agent = self.agents.get("memory_manager")
+            if not agent:
+                raise WorkflowException("MemoryManager agent not available")
+            
+            input_data = {
+                "hotspots": state.agents.get("validator", {}).get("output", {}),
+                "run_id": state.run_id
+            }
+            
+            result = agent.run(input_data, run_id=state.run_id)
+            state.agents["memory_manager"] = agent.state
+            state.workflow.current_step = "memory_storage"
+            
+        except Exception as e:
+            state.errors.append(f"Memory storage failed: {str(e)}")
+            self.logger.error(f"Memory storage error: {e}")
+        
+        return state
+    
+    def _end_workflow(self, state: MASXState) -> MASXState:
+        """Finalize workflow execution."""
+        state.workflow.completed = True
+        state.workflow.current_step = "end"
+        
+        # Check for errors
+        if state.errors:
+            state.workflow.failed = True
+            self.logger.error(f"Workflow completed with errors: {state.errors}")
+        else:
+            self.logger.info("Workflow completed successfully")
+        
+        log_workflow_step(
+            self.logger,
+            "end",
+            "workflow_completion",
+            output_data={
+                "completed": state.workflow.completed,
+                "failed": state.workflow.failed,
+                "error_count": len(state.errors)
+            },
+            run_id=state.run_id
+        )
+        
+        return state
+    
+    # Detection workflow steps
+    def _detect_anomaly(self, state: MASXState) -> MASXState:
+        """Detect anomalies in the workflow."""
+        # Implementation for anomaly detection
+        return state
+    
+    def _classify_anomaly(self, state: MASXState) -> MASXState:
+        """Classify detected anomalies."""
+        # Implementation for anomaly classification
+        return state
+    
+    def _resolve_anomaly(self, state: MASXState) -> MASXState:
+        """Resolve detected anomalies."""
+        # Implementation for anomaly resolution
+        return state
+    
+    def _visualize_result(self, state: MASXState) -> MASXState:
+        """Visualize workflow results."""
+        # Implementation for result visualization
+        return state
+    
+    # Trigger workflow steps
+    def _trigger_workflow(self, state: MASXState) -> MASXState:
+        """Trigger workflow execution."""
+        # Implementation for workflow triggering
+        return state
+    
+    def _delegate_tasks(self, state: MASXState) -> MASXState:
+        """Delegate tasks to agents."""
+        # Implementation for task delegation
+        return state
+    
+    def _fetch_results(self, state: MASXState) -> MASXState:
+        """Fetch results from agents."""
+        # Implementation for result fetching
+        return state
+    
+    def _update_plan(self, state: MASXState) -> MASXState:
+        """Update execution plan."""
+        # Implementation for plan updating
+        return state
+    
+    def _re_execute(self, state: MASXState) -> MASXState:
+        """Re-execute workflow steps."""
+        # Implementation for re-execution
+        return state
+    
+    def _should_continue(self, state: MASXState) -> str:
+        """Determine if workflow should continue."""
+        # Implementation for continuation logic
+        return "complete"
+    
+    def run_workflow(self, workflow_type: str = "daily", input_data: Optional[Dict[str, Any]] = None) -> MASXState:
+        """
+        Run a complete workflow.
+        
+        Args:
+            workflow_type: Type of workflow to run
+            input_data: Optional input data for the workflow
+            
+        Returns:
+            MASXState: Final workflow state
+        """
+        with measure_execution_time(f"{workflow_type}_workflow"):
+            try:
+                # Create workflow graph
+                workflow_graph = self.create_workflow_graph(workflow_type)
+                compiled_workflow = workflow_graph.compile()
+                
+                # Initialize state
+                initial_state = MASXState(
+                    run_id=generate_run_id(),
+                    workflow=WorkflowState(),
+                    metadata=input_data or {}
+                )
+                
+                # Run workflow
+                final_state = compiled_workflow.invoke(initial_state)
+                
+                self.logger.info(
+                    f"{workflow_type} workflow completed",
+                    run_id=final_state.run_id,
+                    success=final_state.workflow.completed and not final_state.workflow.failed,
+                    error_count=len(final_state.errors)
+                )
+                
+                return final_state
+                
+            except Exception as e:
+                self.logger.error(f"Workflow execution failed: {e}")
+                raise WorkflowException(f"Workflow execution failed: {str(e)}")
+    
+    def run_daily_workflow(self, input_data: Optional[Dict[str, Any]] = None) -> MASXState:
+        """Run the daily workflow."""
+        return self.run_workflow("daily", input_data)
+    
+    def run_detection_workflow(self, input_data: Optional[Dict[str, Any]] = None) -> MASXState:
+        """Run the detection workflow."""
+        return self.run_workflow("detection", input_data)
+    
+    def run_trigger_workflow(self, input_data: Optional[Dict[str, Any]] = None) -> MASXState:
+        """Run the trigger workflow."""
+        return self.run_workflow("trigger", input_data) 
