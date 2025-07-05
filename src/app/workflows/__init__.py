@@ -19,6 +19,6 @@ from .workflows import (
 __all__ = [
     "MASXOrchestrator",
     "create_daily_workflow",
-    "create_detection_workflow", 
+    "create_detection_workflow",
     "create_trigger_workflow",
-] 
+]

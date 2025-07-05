@@ -118,7 +118,7 @@ class DomainClassifier(BaseAgent):
         return bool(title.strip() or description.strip())
 
     def _build_classification_prompt(self, title: str, description: str) -> str:
-        """ Build the classification prompt for the LLM.
+        """Build the classification prompt for the LLM.
         Args:title: Content title
              description: Content description
         Returns:str: Formatted prompt for domain classification
