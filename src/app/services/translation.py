@@ -1,0 +1,620 @@
+"""
+Translation service for Global Signal Grid (MASX) Agentic AI System.
+
+Provides multilingual translation capabilities with:
+- Google Translate integration
+- DeepL integration
+- Local translation models
+- Language detection
+- Caching and rate limiting
+- Error handling and fallbacks
+
+Usage:
+    from app.services.translation import TranslationService
+    
+    translator = TranslationService()
+    translated = await translator.translate("Hello world", target_lang="es")
+    detected = await translator.detect_language("Bonjour le monde")
+"""
+import asyncio
+import hashlib
+import json
+from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+import aiohttp
+from googletrans import Translator as GoogleTranslator
+from langdetect import detect, DetectorFactory
+
+from ..core.exceptions import TranslationException, ConfigurationException
+from ..core.utils import measure_execution_time
+from ..config.settings import get_settings
+from ..config.logging_config import get_service_logger
+
+
+class TranslationProvider(Enum):
+    """Supported translation providers."""
+    GOOGLE = "google"
+    DEEPL = "deepl"
+    LOCAL = "local"
+
+
+@dataclass
+class TranslationRequest:
+    """Translation request data."""
+    text: str
+    source_lang: Optional[str] = None
+    target_lang: str = "en"
+    provider: TranslationProvider = TranslationProvider.GOOGLE
+    cache_key: Optional[str] = None
+    
+    def __post_init__(self):
+        if self.cache_key is None:
+            # Generate cache key from text and languages
+            key_data = f"{self.text}:{self.source_lang}:{self.target_lang}"
+            self.cache_key = hashlib.md5(key_data.encode()).hexdigest()
+
+
+@dataclass
+class TranslationResult:
+    """Translation result data."""
+    original_text: str
+    translated_text: str
+    source_lang: str
+    target_lang: str
+    confidence: float = 1.0
+    provider: TranslationProvider = TranslationProvider.GOOGLE
+    execution_time: float = 0.0
+    cached: bool = False
+
+
+@dataclass
+class LanguageDetectionResult:
+    """Language detection result data."""
+    text: str
+    detected_lang: str
+    confidence: float = 1.0
+    execution_time: float = 0.0
+
+
+class TranslationService:
+    """
+    Translation service with multiple provider support.
+    
+    Features:
+    - Multiple translation providers (Google, DeepL, Local)
+    - Language detection
+    - Caching for performance
+    - Rate limiting and error handling
+    - Fallback mechanisms
+    """
+    
+    def __init__(self):
+        """Initialize the translation service."""
+        self.settings = get_settings()
+        self.logger = get_service_logger("TranslationService")
+        self._cache: Dict[str, TranslationResult] = {}
+        self._rate_limiters: Dict[TranslationProvider, float] = {}
+        self._session: Optional[aiohttp.ClientSession] = None
+        
+        # Initialize providers
+        self._google_translator = None
+        self._deepl_api_key = None
+        self._local_model = None
+        
+        self._initialize_providers()
+    
+    def _initialize_providers(self):
+        """Initialize translation providers."""
+        try:
+            # Set seed for consistent language detection
+            DetectorFactory.seed = 0
+            
+            # Initialize Google Translate
+            if self.settings.enable_google_translate:
+                self._google_translator = GoogleTranslator()
+                self.logger.info("Google Translate provider initialized")
+            
+            # Initialize DeepL
+            if self.settings.deepl_api_key:
+                self._deepl_api_key = self.settings.deepl_api_key
+                self.logger.info("DeepL provider initialized")
+            
+            # Initialize local model (placeholder for future implementation)
+            if self.settings.enable_local_translation:
+                self._local_model = self._initialize_local_model()
+                self.logger.info("Local translation provider initialized")
+            
+            if not any([self._google_translator, self._deepl_api_key, self._local_model]):
+                self.logger.warning("No translation providers configured")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize translation providers: {e}")
+            raise ConfigurationException(f"Translation service initialization failed: {str(e)}")
+    
+    def _initialize_local_model(self):
+        """Initialize local translation model."""
+        # Placeholder for local model initialization
+        # Could use models like Helsinki NLP, Marian, or other local models
+        return None
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        self._session = aiohttp.ClientSession()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self._session:
+            await self._session.close()
+    
+    async def translate(
+        self,
+        text: str,
+        target_lang: str = "en",
+        source_lang: Optional[str] = None,
+        provider: Optional[TranslationProvider] = None,
+        use_cache: bool = True
+    ) -> TranslationResult:
+        """
+        Translate text to target language.
+        
+        Args:
+            text: Text to translate
+            target_lang: Target language code
+            source_lang: Source language code (auto-detect if None)
+            provider: Translation provider to use
+            use_cache: Whether to use cached results
+            
+        Returns:
+            TranslationResult: Translation result
+        """
+        with measure_execution_time("translate"):
+            try:
+                # Create translation request
+                request = TranslationRequest(
+                    text=text,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    provider=provider or TranslationProvider.GOOGLE
+                )
+                
+                # Check cache first
+                if use_cache and request.cache_key in self._cache:
+                    cached_result = self._cache[request.cache_key]
+                    cached_result.cached = True
+                    self.logger.debug(f"Translation cache hit for key: {request.cache_key}")
+                    return cached_result
+                
+                # Detect source language if not provided
+                if not source_lang:
+                    detection_result = await self.detect_language(text)
+                    request.source_lang = detection_result.detected_lang
+                
+                # Perform translation
+                result = await self._translate_with_provider(request)
+                
+                # Cache result
+                if use_cache:
+                    self._cache[request.cache_key] = result
+                
+                self.logger.info(
+                    f"Translation completed: {request.source_lang} -> {target_lang}",
+                    provider=provider.value if provider else "auto"
+                )
+                
+                return result
+                
+            except Exception as e:
+                self.logger.error(f"Translation failed: {e}")
+                raise TranslationException(f"Translation failed: {str(e)}")
+    
+    async def _translate_with_provider(self, request: TranslationRequest) -> TranslationResult:
+        """
+        Translate using specified provider with fallback.
+        
+        Args:
+            request: Translation request
+            
+        Returns:
+            TranslationResult: Translation result
+        """
+        providers_to_try = [request.provider]
+        
+        # Add fallback providers
+        if request.provider == TranslationProvider.DEEPL:
+            providers_to_try.extend([TranslationProvider.GOOGLE, TranslationProvider.LOCAL])
+        elif request.provider == TranslationProvider.GOOGLE:
+            providers_to_try.extend([TranslationProvider.DEEPL, TranslationProvider.LOCAL])
+        elif request.provider == TranslationProvider.LOCAL:
+            providers_to_try.extend([TranslationProvider.GOOGLE, TranslationProvider.DEEPL])
+        
+        last_error = None
+        
+        for provider in providers_to_try:
+            try:
+                if provider == TranslationProvider.GOOGLE and self._google_translator:
+                    return await self._translate_with_google(request)
+                elif provider == TranslationProvider.DEEPL and self._deepl_api_key:
+                    return await self._translate_with_deepl(request)
+                elif provider == TranslationProvider.LOCAL and self._local_model:
+                    return await self._translate_with_local(request)
+                
+            except Exception as e:
+                last_error = e
+                self.logger.warning(f"Provider {provider.value} failed: {e}")
+                continue
+        
+        # All providers failed
+        raise TranslationException(f"All translation providers failed. Last error: {last_error}")
+    
+    async def _translate_with_google(self, request: TranslationRequest) -> TranslationResult:
+        """Translate using Google Translate."""
+        try:
+            # Run in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            translation = await loop.run_in_executor(
+                None,
+                self._google_translator.translate,
+                request.text,
+                dest=request.target_lang,
+                src=request.source_lang
+            )
+            
+            return TranslationResult(
+                original_text=request.text,
+                translated_text=translation.text,
+                source_lang=translation.src,
+                target_lang=translation.dest,
+                confidence=getattr(translation, 'confidence', 1.0),
+                provider=TranslationProvider.GOOGLE
+            )
+            
+        except Exception as e:
+            raise TranslationException(f"Google Translate failed: {str(e)}")
+    
+    async def _translate_with_deepl(self, request: TranslationRequest) -> TranslationResult:
+        """Translate using DeepL API."""
+        try:
+            if not self._session:
+                raise TranslationException("HTTP session not initialized")
+            
+            # Check rate limiting
+            await self._check_rate_limit(TranslationProvider.DEEPL)
+            
+            url = "https://api-free.deepl.com/v2/translate"
+            headers = {
+                "Authorization": f"DeepL-Auth-Key {self._deepl_api_key}",
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            
+            data = {
+                "text": request.text,
+                "target_lang": request.target_lang.upper()
+            }
+            
+            if request.source_lang:
+                data["source_lang"] = request.source_lang.upper()
+            
+            async with self._session.post(url, headers=headers, data=data) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise TranslationException(f"DeepL API error: {response.status} - {error_text}")
+                
+                result_data = await response.json()
+                
+                if "translations" in result_data and result_data["translations"]:
+                    translation = result_data["translations"][0]
+                    return TranslationResult(
+                        original_text=request.text,
+                        translated_text=translation["text"],
+                        source_lang=translation.get("detected_source_language", request.source_lang or "unknown"),
+                        target_lang=request.target_lang,
+                        confidence=1.0,
+                        provider=TranslationProvider.DEEPL
+                    )
+                else:
+                    raise TranslationException("DeepL returned no translations")
+            
+        except Exception as e:
+            raise TranslationException(f"DeepL translation failed: {str(e)}")
+    
+    async def _translate_with_local(self, request: TranslationRequest) -> TranslationResult:
+        """Translate using local model."""
+        # Placeholder for local model translation
+        # This would use a local translation model like Helsinki NLP
+        raise TranslationException("Local translation not yet implemented")
+    
+    async def detect_language(self, text: str) -> LanguageDetectionResult:
+        """
+        Detect the language of the given text.
+        
+        Args:
+            text: Text to detect language for
+            
+        Returns:
+            LanguageDetectionResult: Language detection result
+        """
+        with measure_execution_time("detect_language"):
+            try:
+                # Use langdetect for language detection
+                loop = asyncio.get_event_loop()
+                detected_lang = await loop.run_in_executor(None, detect, text)
+                
+                result = LanguageDetectionResult(
+                    text=text,
+                    detected_lang=detected_lang
+                )
+                
+                self.logger.debug(f"Language detected: {detected_lang}")
+                return result
+                
+            except Exception as e:
+                self.logger.error(f"Language detection failed: {e}")
+                raise TranslationException(f"Language detection failed: {str(e)}")
+    
+    async def translate_batch(
+        self,
+        texts: List[str],
+        target_lang: str = "en",
+        source_lang: Optional[str] = None,
+        provider: Optional[TranslationProvider] = None,
+        max_concurrent: int = 5
+    ) -> List[TranslationResult]:
+        """
+        Translate multiple texts in parallel.
+        
+        Args:
+            texts: List of texts to translate
+            target_lang: Target language code
+            source_lang: Source language code
+            provider: Translation provider to use
+            max_concurrent: Maximum concurrent translations
+            
+        Returns:
+            List of translation results
+        """
+        with measure_execution_time("translate_batch"):
+            try:
+                semaphore = asyncio.Semaphore(max_concurrent)
+                
+                async def translate_single(text: str) -> TranslationResult:
+                    async with semaphore:
+                        return await self.translate(
+                            text=text,
+                            target_lang=target_lang,
+                            source_lang=source_lang,
+                            provider=provider
+                        )
+                
+                tasks = [translate_single(text) for text in texts]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Handle exceptions
+                translation_results = []
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        self.logger.error(f"Translation {i} failed: {result}")
+                        # Return original text as fallback
+                        translation_results.append(TranslationResult(
+                            original_text=texts[i],
+                            translated_text=texts[i],
+                            source_lang=source_lang or "unknown",
+                            target_lang=target_lang,
+                            confidence=0.0
+                        ))
+                    else:
+                        translation_results.append(result)
+                
+                self.logger.info(f"Batch translation completed: {len(translation_results)} texts")
+                return translation_results
+                
+            except Exception as e:
+                self.logger.error(f"Batch translation failed: {e}")
+                raise TranslationException(f"Batch translation failed: {str(e)}")
+    
+    async def _check_rate_limit(self, provider: TranslationProvider):
+        """Check and enforce rate limits for providers."""
+        current_time = asyncio.get_event_loop().time()
+        last_request = self._rate_limiters.get(provider, 0)
+        
+        # Rate limits (requests per second)
+        rate_limits = {
+            TranslationProvider.GOOGLE: 10,  # 10 requests per second
+            TranslationProvider.DEEPL: 5,    # 5 requests per second
+            TranslationProvider.LOCAL: 100   # 100 requests per second
+        }
+        
+        min_interval = 1.0 / rate_limits.get(provider, 10)
+        
+        if current_time - last_request < min_interval:
+            sleep_time = min_interval - (current_time - last_request)
+            await asyncio.sleep(sleep_time)
+        
+        self._rate_limiters[provider] = current_time
+    
+    def get_supported_languages(self, provider: TranslationProvider) -> Dict[str, str]:
+        """
+        Get supported languages for a provider.
+        
+        Args:
+            provider: Translation provider
+            
+        Returns:
+            Dictionary mapping language codes to language names
+        """
+        # Common language mappings
+        languages = {
+            "en": "English",
+            "es": "Spanish",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "zh": "Chinese",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "ar": "Arabic",
+            "hi": "Hindi",
+            "tr": "Turkish",
+            "nl": "Dutch",
+            "pl": "Polish",
+            "sv": "Swedish",
+            "da": "Danish",
+            "no": "Norwegian",
+            "fi": "Finnish",
+            "cs": "Czech",
+            "hu": "Hungarian",
+            "ro": "Romanian",
+            "bg": "Bulgarian",
+            "hr": "Croatian",
+            "sk": "Slovak",
+            "sl": "Slovenian",
+            "et": "Estonian",
+            "lv": "Latvian",
+            "lt": "Lithuanian",
+            "mt": "Maltese",
+            "el": "Greek",
+            "he": "Hebrew",
+            "th": "Thai",
+            "vi": "Vietnamese",
+            "id": "Indonesian",
+            "ms": "Malay",
+            "tl": "Filipino",
+            "sw": "Swahili",
+            "af": "Afrikaans",
+            "is": "Icelandic",
+            "ga": "Irish",
+            "cy": "Welsh",
+            "eu": "Basque",
+            "ca": "Catalan",
+            "gl": "Galician",
+            "sq": "Albanian",
+            "mk": "Macedonian",
+            "sr": "Serbian",
+            "bs": "Bosnian",
+            "me": "Montenegrin",
+            "uk": "Ukrainian",
+            "be": "Belarusian",
+            "kk": "Kazakh",
+            "ky": "Kyrgyz",
+            "uz": "Uzbek",
+            "tg": "Tajik",
+            "mn": "Mongolian",
+            "ka": "Georgian",
+            "hy": "Armenian",
+            "az": "Azerbaijani",
+            "fa": "Persian",
+            "ur": "Urdu",
+            "bn": "Bengali",
+            "si": "Sinhala",
+            "my": "Burmese",
+            "km": "Khmer",
+            "lo": "Lao",
+            "ne": "Nepali",
+            "gu": "Gujarati",
+            "pa": "Punjabi",
+            "or": "Odia",
+            "ta": "Tamil",
+            "te": "Telugu",
+            "kn": "Kannada",
+            "ml": "Malayalam",
+            "as": "Assamese",
+            "mr": "Marathi",
+            "sa": "Sanskrit",
+            "am": "Amharic",
+            "ti": "Tigrinya",
+            "so": "Somali",
+            "ha": "Hausa",
+            "yo": "Yoruba",
+            "ig": "Igbo",
+            "zu": "Zulu",
+            "xh": "Xhosa",
+            "st": "Southern Sotho",
+            "tn": "Tswana",
+            "ss": "Swati",
+            "ve": "Venda",
+            "ts": "Tsonga",
+            "nr": "Southern Ndebele",
+            "nd": "Northern Ndebele",
+        }
+        
+        return languages
+    
+    def clear_cache(self):
+        """Clear the translation cache."""
+        cache_size = len(self._cache)
+        self._cache.clear()
+        self.logger.info(f"Translation cache cleared: {cache_size} entries")
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get translation cache statistics.
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        return {
+            "cache_size": len(self._cache),
+            "cache_keys": list(self._cache.keys()),
+            "rate_limiters": {
+                provider.value: last_request
+                for provider, last_request in self._rate_limiters.items()
+            }
+        }
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform translation service health check.
+        
+        Returns:
+            Dictionary with health check results
+        """
+        try:
+            health_status = {
+                "status": "healthy",
+                "timestamp": asyncio.get_event_loop().time(),
+                "providers": {}
+            }
+            
+            # Check Google Translate
+            if self._google_translator:
+                try:
+                    # Simple translation test
+                    test_result = await self.translate("Hello", target_lang="es")
+                    health_status["providers"]["google"] = {
+                        "status": "healthy",
+                        "test_result": test_result.translated_text
+                    }
+                except Exception as e:
+                    health_status["providers"]["google"] = {
+                        "status": "error",
+                        "error": str(e)
+                    }
+                    health_status["status"] = "unhealthy"
+            else:
+                health_status["providers"]["google"] = {"status": "not_configured"}
+            
+            # Check DeepL
+            if self._deepl_api_key:
+                health_status["providers"]["deepl"] = {"status": "configured"}
+            else:
+                health_status["providers"]["deepl"] = {"status": "not_configured"}
+            
+            # Check local model
+            if self._local_model:
+                health_status["providers"]["local"] = {"status": "configured"}
+            else:
+                health_status["providers"]["local"] = {"status": "not_configured"}
+            
+            return health_status
+            
+        except Exception as e:
+            self.logger.error(f"Health check failed: {e}")
+            return {
+                "status": "error",
+                "timestamp": asyncio.get_event_loop().time(),
+                "error": str(e)
+            } 
