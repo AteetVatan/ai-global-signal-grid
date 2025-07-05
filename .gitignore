@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# VSCode
+.vscode/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyright
+.pyright/
+
+# Pyre type checker
+.pyre/
+
+# Logs
+*.log
+
+# Local config files
+*.env
+*.env.*
+.envrc
+*.local
+
+# Mac OS
+.DS_Store
+
+# Linux/Mac trash
+.Trash-*
+
+# PyCharm
+.idea/
+
+# Deployment
+build/
+dist/
+*.egg-info/
+
+# Docker
+*.pid
+docker-compose.override.yml
