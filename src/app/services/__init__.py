@@ -1,21 +1,45 @@
 """
-Service layer for Global Signal Grid (MASX) Agentic AI System.
-This package contains service implementations for:
-- LLM integration and management
-- Translation services
-- Embedding generation and vector operations
-- Database operations and memory management
-Usage: from app.services import LLMService, TranslationService, DatabaseService
+Services for Global Signal Grid (MASX) Agentic AI System.
+
+This package contains service layer components including:
+- Database service with Supabase integration
+- Translation service for multilingual support
+- Embedding service for vector operations
+- Data sources integration (Google News RSS, GDELT)
+- Data processing and ETL pipelines
+- Real-time streaming and WebSocket support
+- Advanced analytics and reporting
+- External API integrations
+
+Usage:
+    from app.services import DatabaseService, TranslationService, EmbeddingService
 """
 
+from .database import DatabaseService
+from .translation import TranslationService
+from .embedding import EmbeddingService
 from .llm_service import LLMService
-from .translation_service import TranslationService
-from .embedding_service import EmbeddingService
-from .database_service import DatabaseService
+from .data_sources import DataSourcesService, Article, GDELTEvent
+from .data_processing import DataProcessingPipeline, ProcessedArticle, TrendAnalysis
+from .streaming import StreamingService, WebSocketManager, StreamEvent, StreamFilter
+from .analytics import DataAnalyticsService, AnalyticsReport, RiskAssessment
 
 __all__ = [
-    "LLMService",
-    "TranslationService",
-    "EmbeddingService",
     "DatabaseService",
+    "TranslationService", 
+    "EmbeddingService",
+    "LLMService",
+    "DataSourcesService",
+    "Article",
+    "GDELTEvent",
+    "DataProcessingPipeline",
+    "ProcessedArticle",
+    "TrendAnalysis",
+    "StreamingService",
+    "WebSocketManager",
+    "StreamEvent",
+    "StreamFilter",
+    "DataAnalyticsService",
+    "AnalyticsReport",
+    "RiskAssessment",
 ]
