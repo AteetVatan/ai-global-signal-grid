@@ -34,7 +34,7 @@ dependencies = [
     
     # Multi-agent frameworks
     "crewai>=0.50.0",
-    "autogen>=1.0.0",
+    "autogen>=0.9.5",
     
     # Web framework and API
     "fastapi>=0.110.0",

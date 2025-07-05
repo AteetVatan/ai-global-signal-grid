@@ -320,3 +320,12 @@ def get_workflow_logger(workflow_name: str) -> structlog.stdlib.BoundLogger:
     Returns:Configured logger with workflow context
     """
     return structlog.get_logger(f"workflow.{workflow_name}")
+
+
+def get_service_logger(service_name: str) -> structlog.stdlib.BoundLogger:
+    """
+    Get a structured logger for a service module.
+    service_name: Name of the service (e.g., 'DatabaseService')
+    Returns: Configured structured logger
+    """
+    return structlog.get_logger(f"service.{service_name}")

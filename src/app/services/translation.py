@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import aiohttp
-from googletrans import Translator as GoogleTranslator
+from deep_translator import GoogleTranslator
 from langdetect import detect, DetectorFactory
 
 from ..core.exceptions import TranslationException, ConfigurationException
@@ -79,253 +79,24 @@ class LanguageDetectionResult:
 
 
 class TranslationService:
-    """
-    Translation service with multiple provider support.
-    
-    Features:
-    - Multiple translation providers (Google, DeepL, Local)
-    - Language detection
-    - Caching for performance
-    - Rate limiting and error handling
-    - Fallback mechanisms
-    """
-    
-    def __init__(self):
-        """Initialize the translation service."""
-        self.settings = get_settings()
-        self.logger = get_service_logger("TranslationService")
-        self._cache: Dict[str, TranslationResult] = {}
-        self._rate_limiters: Dict[TranslationProvider, float] = {}
-        self._session: Optional[aiohttp.ClientSession] = None
-        
-        # Initialize providers
-        self._google_translator = None
-        self._deepl_api_key = None
-        self._local_model = None
-        
-        self._initialize_providers()
-    
-    def _initialize_providers(self):
-        """Initialize translation providers."""
-        try:
-            # Set seed for consistent language detection
-            DetectorFactory.seed = 0
-            
-            # Initialize Google Translate
-            if self.settings.enable_google_translate:
-                self._google_translator = GoogleTranslator()
-                self.logger.info("Google Translate provider initialized")
-            
-            # Initialize DeepL
-            if self.settings.deepl_api_key:
-                self._deepl_api_key = self.settings.deepl_api_key
-                self.logger.info("DeepL provider initialized")
-            
-            # Initialize local model (placeholder for future implementation)
-            if self.settings.enable_local_translation:
-                self._local_model = self._initialize_local_model()
-                self.logger.info("Local translation provider initialized")
-            
-            if not any([self._google_translator, self._deepl_api_key, self._local_model]):
-                self.logger.warning("No translation providers configured")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize translation providers: {e}")
-            raise ConfigurationException(f"Translation service initialization failed: {str(e)}")
-    
-    def _initialize_local_model(self):
-        """Initialize local translation model."""
-        # Placeholder for local model initialization
-        # Could use models like Helsinki NLP, Marian, or other local models
-        return None
-    
-    async def __aenter__(self):
-        """Async context manager entry."""
-        self._session = aiohttp.ClientSession()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        if self._session:
-            await self._session.close()
-    
-    async def translate(
-        self,
-        text: str,
-        target_lang: str = "en",
-        source_lang: Optional[str] = None,
-        provider: Optional[TranslationProvider] = None,
-        use_cache: bool = True
-    ) -> TranslationResult:
+    """Service for translating text using deep-translator's GoogleTranslator."""
+
+    def __init__(self, source_lang: str = "auto", target_lang: str = "en"):
+        self.source_lang = source_lang
+        self.target_lang = target_lang
+        self.translator = GoogleTranslator(source=self.source_lang, target=self.target_lang)
+
+    def translate(self, text: str, source_lang: str = None, target_lang: str = None) -> str:
         """
-        Translate text to target language.
-        
-        Args:
-            text: Text to translate
-            target_lang: Target language code
-            source_lang: Source language code (auto-detect if None)
-            provider: Translation provider to use
-            use_cache: Whether to use cached results
-            
-        Returns:
-            TranslationResult: Translation result
+        Translate text from source_lang to target_lang using deep-translator.
+        If source_lang or target_lang is not provided, use defaults.
         """
-        with measure_execution_time("translate"):
-            try:
-                # Create translation request
-                request = TranslationRequest(
-                    text=text,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    provider=provider or TranslationProvider.GOOGLE
-                )
-                
-                # Check cache first
-                if use_cache and request.cache_key in self._cache:
-                    cached_result = self._cache[request.cache_key]
-                    cached_result.cached = True
-                    self.logger.debug(f"Translation cache hit for key: {request.cache_key}")
-                    return cached_result
-                
-                # Detect source language if not provided
-                if not source_lang:
-                    detection_result = await self.detect_language(text)
-                    request.source_lang = detection_result.detected_lang
-                
-                # Perform translation
-                result = await self._translate_with_provider(request)
-                
-                # Cache result
-                if use_cache:
-                    self._cache[request.cache_key] = result
-                
-                self.logger.info(
-                    f"Translation completed: {request.source_lang} -> {target_lang}",
-                    provider=provider.value if provider else "auto"
-                )
-                
-                return result
-                
-            except Exception as e:
-                self.logger.error(f"Translation failed: {e}")
-                raise TranslationException(f"Translation failed: {str(e)}")
-    
-    async def _translate_with_provider(self, request: TranslationRequest) -> TranslationResult:
-        """
-        Translate using specified provider with fallback.
-        
-        Args:
-            request: Translation request
-            
-        Returns:
-            TranslationResult: Translation result
-        """
-        providers_to_try = [request.provider]
-        
-        # Add fallback providers
-        if request.provider == TranslationProvider.DEEPL:
-            providers_to_try.extend([TranslationProvider.GOOGLE, TranslationProvider.LOCAL])
-        elif request.provider == TranslationProvider.GOOGLE:
-            providers_to_try.extend([TranslationProvider.DEEPL, TranslationProvider.LOCAL])
-        elif request.provider == TranslationProvider.LOCAL:
-            providers_to_try.extend([TranslationProvider.GOOGLE, TranslationProvider.DEEPL])
-        
-        last_error = None
-        
-        for provider in providers_to_try:
-            try:
-                if provider == TranslationProvider.GOOGLE and self._google_translator:
-                    return await self._translate_with_google(request)
-                elif provider == TranslationProvider.DEEPL and self._deepl_api_key:
-                    return await self._translate_with_deepl(request)
-                elif provider == TranslationProvider.LOCAL and self._local_model:
-                    return await self._translate_with_local(request)
-                
-            except Exception as e:
-                last_error = e
-                self.logger.warning(f"Provider {provider.value} failed: {e}")
-                continue
-        
-        # All providers failed
-        raise TranslationException(f"All translation providers failed. Last error: {last_error}")
-    
-    async def _translate_with_google(self, request: TranslationRequest) -> TranslationResult:
-        """Translate using Google Translate."""
-        try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            translation = await loop.run_in_executor(
-                None,
-                self._google_translator.translate,
-                request.text,
-                dest=request.target_lang,
-                src=request.source_lang
-            )
-            
-            return TranslationResult(
-                original_text=request.text,
-                translated_text=translation.text,
-                source_lang=translation.src,
-                target_lang=translation.dest,
-                confidence=getattr(translation, 'confidence', 1.0),
-                provider=TranslationProvider.GOOGLE
-            )
-            
-        except Exception as e:
-            raise TranslationException(f"Google Translate failed: {str(e)}")
-    
-    async def _translate_with_deepl(self, request: TranslationRequest) -> TranslationResult:
-        """Translate using DeepL API."""
-        try:
-            if not self._session:
-                raise TranslationException("HTTP session not initialized")
-            
-            # Check rate limiting
-            await self._check_rate_limit(TranslationProvider.DEEPL)
-            
-            url = "https://api-free.deepl.com/v2/translate"
-            headers = {
-                "Authorization": f"DeepL-Auth-Key {self._deepl_api_key}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
-            
-            data = {
-                "text": request.text,
-                "target_lang": request.target_lang.upper()
-            }
-            
-            if request.source_lang:
-                data["source_lang"] = request.source_lang.upper()
-            
-            async with self._session.post(url, headers=headers, data=data) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise TranslationException(f"DeepL API error: {response.status} - {error_text}")
-                
-                result_data = await response.json()
-                
-                if "translations" in result_data and result_data["translations"]:
-                    translation = result_data["translations"][0]
-                    return TranslationResult(
-                        original_text=request.text,
-                        translated_text=translation["text"],
-                        source_lang=translation.get("detected_source_language", request.source_lang or "unknown"),
-                        target_lang=request.target_lang,
-                        confidence=1.0,
-                        provider=TranslationProvider.DEEPL
-                    )
-                else:
-                    raise TranslationException("DeepL returned no translations")
-            
-        except Exception as e:
-            raise TranslationException(f"DeepL translation failed: {str(e)}")
-    
-    async def _translate_with_local(self, request: TranslationRequest) -> TranslationResult:
-        """Translate using local model."""
-        # Placeholder for local model translation
-        # This would use a local translation model like Helsinki NLP
-        raise TranslationException("Local translation not yet implemented")
-    
+        src = source_lang or self.source_lang
+        tgt = target_lang or self.target_lang
+        # deep-translator requires a new instance for different languages
+        translator = GoogleTranslator(source=src, target=tgt)
+        return translator.translate(text)
+
     async def detect_language(self, text: str) -> LanguageDetectionResult:
         """
         Detect the language of the given text.
