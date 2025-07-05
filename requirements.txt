@@ -8,7 +8,7 @@ tiktoken>=0.6.0
 
 # Multi-agent frameworks
 crewai>=0.50.0
-autogen>=1.0.0
+autogen>=0.9.5 #from 1.0.0
 
 # Web framework and API
 fastapi>=0.110.0
