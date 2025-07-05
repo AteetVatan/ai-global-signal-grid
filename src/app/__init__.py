@@ -18,9 +18,9 @@ from .workflows.orchestrator import MASXOrchestrator
 
 __all__ = [
     "__version__",
-    "__author__", 
+    "__author__",
     "__email__",
     "get_settings",
     "MASXState",
     "MASXOrchestrator",
-] 
+]

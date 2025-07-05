@@ -22,11 +22,11 @@ def setup_logging(
     log_format: Optional[str] = None,
 ) -> None:
     """
-    logging for the GlobalSignalGrid system.    
+    logging for the GlobalSignalGrid system.
     log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     log_file: Path to log file
     log_format: Log format ('json' or 'text')
-        
+
     This function sets up:
     Structured logging with JSON output
     **Log rotation and retention
@@ -34,17 +34,17 @@ def setup_logging(
     **Custom formatters for different environments
     """
     settings = get_settings()
-    
+
     # Use provided params or fall back to settings
     log_level = log_level or settings.log_level
     log_file = log_file or settings.log_file
     log_format = log_format or settings.log_format
-    
+
     # Create logs directory if it doesn't exist
     if log_file:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Configure structlog
     structlog.configure(
         processors=[
@@ -56,45 +56,47 @@ def setup_logging(
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer() if log_format == "json" else structlog.dev.ConsoleRenderer(),
+            (
+                structlog.processors.JSONRenderer()
+                if log_format == "json"
+                else structlog.dev.ConsoleRenderer()
+            ),
         ],
         context_class=dict,
         logger_factory=LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
-    
+
     # Standard library logging
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=getattr(logging, log_level.upper()),
     )
-    
+
     # Create root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level.upper()))
-    
+
     # Clear existing handlers
     root_logger.handlers.clear()
-    
+
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, log_level.upper()))
     root_logger.addHandler(console_handler)
-    
+
     # File handler with rotation
     if log_file:
         file_handler = create_rotating_file_handler(
-            log_file, 
-            settings.log_rotation, 
-            settings.log_retention
+            log_file, settings.log_rotation, settings.log_retention
         )
         root_logger.addHandler(file_handler)
-    
+
     # Set specific loggers
     configure_third_party_loggers(log_level)
-    
+
     # Log startup message
     logger = structlog.get_logger(__name__)
     logger.info(
@@ -107,16 +109,14 @@ def setup_logging(
 
 
 def create_rotating_file_handler(
-    log_file: str, 
-    rotation: str, 
-    retention: int
+    log_file: str, rotation: str, retention: int
 ) -> logging.handlers.RotatingFileHandler:
     """
-    Create a rotating file handler for log files. 
+    Create a rotating file handler for log files.
     log_file: Path to the log file
     rotation: Rotation policy ('daily', 'weekly', 'monthly')
     retention: Number of backup files to keep
-        
+
     Returns:  Configured rotating file handler
     """
     # Calculate max bytes based on rotation policy
@@ -132,22 +132,22 @@ def create_rotating_file_handler(
     else:
         max_bytes = 10 * 1024 * 1024  # Default 10MB
         backup_count = 30  # Default 30 backups
-    
+
     handler = logging.handlers.RotatingFileHandler(
         log_file,
         maxBytes=max_bytes,
         backupCount=backup_count,
         encoding="utf-8",
     )
-    
+
     handler.setLevel(logging.DEBUG)  # File handler captures all levels
-    
+
     return handler
 
 
 def configure_third_party_loggers(log_level: str) -> None:
     """
-    Configure logging levels for third-party libraries.    
+    Configure logging levels for third-party libraries.
     Args: log_level: Base logging level for the application
     """
     # Set levels for noisy libraries
@@ -162,7 +162,7 @@ def configure_third_party_loggers(log_level: str) -> None:
     logging.getLogger("supabase").setLevel(logging.INFO)
     logging.getLogger("psycopg2").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
-    
+
     # Set application loggers to DEBUG in development
     if get_settings().is_development:
         logging.getLogger("app").setLevel(logging.DEBUG)
@@ -170,8 +170,8 @@ def configure_third_party_loggers(log_level: str) -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """
-    Get a structured logger instance.    
-    name: Logger name (usually __name__)        
+    Get a structured logger instance.
+    name: Logger name (usually __name__)
     Returns: Configured structured logger
     """
     return structlog.get_logger(name)
@@ -197,7 +197,7 @@ def log_agent_action(
     status: Status of the action ('success', 'failure', 'warning')
     error: Error message if action failed
     run_id: Unique identifier for the current run
-        
+
     This function provides consistent logging format for all agent actions,
     enabling comprehensive audit trails and monitoring.
     """
@@ -207,20 +207,20 @@ def log_agent_action(
         "status": status,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
-    
+
     if run_id:
         log_data["run_id"] = run_id
-    
+
     if parameters:
         log_data["parameters"] = parameters
-    
+
     if result:
         log_data["result"] = result
-    
+
     if error:
         log_data["error"] = error
         log_data["status"] = "failure"
-    
+
     if status == "success":
         logger.info("Agent action completed", **log_data)
     elif status == "failure":
@@ -255,19 +255,19 @@ def log_workflow_step(
         "step_type": step_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
-    
+
     if run_id:
         log_data["run_id"] = run_id
-    
+
     if input_data:
         log_data["input"] = input_data
-    
+
     if output_data:
         log_data["output"] = output_data
-    
+
     if duration is not None:
         log_data["duration_seconds"] = duration
-    
+
     logger.info("Workflow step executed", **log_data)
 
 
@@ -288,10 +288,10 @@ def log_system_event(
         "event_type": event_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
-    
+
     if event_data:
         log_data.update(event_data)
-    
+
     if severity == "info":
         logger.info("System event", **log_data)
     elif severity == "warning":
@@ -307,16 +307,16 @@ def log_system_event(
 # Convenience function for quick logger access
 def get_agent_logger(agent_name: str) -> structlog.stdlib.BoundLogger:
     """
-    Get a logger specifically configured for an agent.    
-    agent_name: Name of the agent        
+    Get a logger specifically configured for an agent.
+    agent_name: Name of the agent
     Returns:Configured logger with agent context
     """
     return structlog.get_logger(f"agent.{agent_name}")
 
 
 def get_workflow_logger(workflow_name: str) -> structlog.stdlib.BoundLogger:
-    """Get a logger specifically configured for a workflow.    
-    Args: workflow_name: Name of the workflow        
+    """Get a logger specifically configured for a workflow.
+    Args: workflow_name: Name of the workflow
     Returns:Configured logger with workflow context
     """
-    return structlog.get_logger(f"workflow.{workflow_name}") 
+    return structlog.get_logger(f"workflow.{workflow_name}")

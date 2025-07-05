@@ -22,7 +22,7 @@ from .utils import (
 
 __all__ = [
     "MASXState",
-    "AgentState", 
+    "AgentState",
     "WorkflowState",
     "MASXException",
     "AgentException",
@@ -35,4 +35,4 @@ __all__ = [
     "validate_url",
     "retry_with_backoff",
     "measure_execution_time",
-] 
+]

@@ -27,7 +27,7 @@ __all__ = [
     "BaseAgent",
     "AgentResult",
     "DomainClassifier",
-    "QueryPlanner", 
+    "QueryPlanner",
     "NewsFetcher",
     "EventFetcher",
     "MergeDeduplicator",
@@ -39,4 +39,4 @@ __all__ = [
     "Validator",
     "MemoryManager",
     "LoggingAuditor",
-] 
+]

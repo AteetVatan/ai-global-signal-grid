@@ -8,4 +8,4 @@ and system-wide constants used throughout the application.
 from .settings import get_settings, Settings
 from .logging_config import setup_logging
 
-__all__ = ["get_settings", "Settings", "setup_logging"] 
+__all__ = ["get_settings", "Settings", "setup_logging"]

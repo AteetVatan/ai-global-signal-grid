@@ -15,7 +15,7 @@ from .database_service import DatabaseService
 
 __all__ = [
     "LLMService",
-    "TranslationService", 
+    "TranslationService",
     "EmbeddingService",
     "DatabaseService",
-] 
+]
