@@ -12,7 +12,7 @@ import tiktoken
 
 # ----- Load API Keys -----
 load_dotenv()
-GOOGLE_API_KEY = os.getenv("WEB_SEARCH_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
 GOOGLE_CX = os.getenv("GOOGLE_CX")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 

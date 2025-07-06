@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     Type validation and defaults are handled automatically.
     """
 
+    # Pydantic Settings to load .env file
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
@@ -43,6 +44,9 @@ class Settings(BaseSettings):
     mistral_api_base: str = Field(
         default="https://api.mistral.ai/v1", description="Mistral API base URL"
     )
+    mistral_temperature: float = Field(default=0.0, description="Mistral temperature")
+    mistral_max_tokens: int = Field(default=4000, description="Mistral max tokens")
+    mistral_token_ref: str = Field(default="mistral-small", description="Mistral token ref")
 
     # Database Configuration (Supabase)
     supabase_url: Optional[str] = Field(
@@ -57,14 +61,28 @@ class Settings(BaseSettings):
     supabase_db_password: Optional[str] = Field(
         default=None, description="Supabase database password"
     )
+    supabase_db_url: Optional[str] = Field(
+        default=None, description="Supabase database URL"
+    )
+    database_max_connections: int = Field(
+        default=10, description="Maximum number of database connections"
+    )
+    database_min_connections: int = Field(
+        default=1, description="Minimum number of database connections"
+    )
 
     # External API Keys
-    web_search_api_key: Optional[str] = Field(
+    google_search_api_key: Optional[str] = Field(
         default=None, description="Google Custom Search API key"
     )
     google_cx: Optional[str] = Field(
         default=None, description="Google Custom Search Engine ID"
     )
+    
+    google_search_base_url: Optional[str] = Field(
+        default=None, description="Google search base URL"
+    )        
+        
     gdelt_api_key: Optional[str] = Field(default=None, description="GDELT API key")
     google_translate_api_key: Optional[str] = Field(
         default=None, description="Google Translate API key"
@@ -165,7 +183,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
 
-    @validator("openai_temperature")
+    @validator("openai_temperature", "mistral_temperature")
     def validate_temperature(cls, v: float) -> float:
         """Validate temperature setting."""
         if not 0.0 <= v <= 2.0:
@@ -221,10 +239,10 @@ class Settings(BaseSettings):
     @property
     def primary_llm_provider(self) -> str:
         """Determine the primary LLM provider."""
-        if self.has_openai_config:
-            return "openai"
-        elif self.has_mistral_config:
+        if self.has_mistral_config:
             return "mistral"
+        elif self.has_openai_config:
+            return "openai"
         else:
             raise ValueError("No LLM provider configured")
 
@@ -245,7 +263,9 @@ class Settings(BaseSettings):
                 "api_key": self.mistral_api_key,
                 "model": self.mistral_model,
                 "api_base": self.mistral_api_base,
-                "temperature": 0.0,  # Mistral default
+                "temperature": self.mistral_temperature,
+                "max_tokens": self.mistral_max_tokens,
+                "token_ref": self.mistral_token_ref,
             }
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
