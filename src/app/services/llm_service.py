@@ -93,7 +93,8 @@ class LLMService:
             self.token_ref = config["token_ref"]
 
         else:
-            raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")
+            raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")        
+
 
     @retry_with_backoff(max_attempts=3, base_delay=1.0)
     def generate_text(

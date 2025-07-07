@@ -23,6 +23,9 @@ from .data_sources import DataSourcesService, Article, GDELTEvent
 from .data_processing import DataProcessingPipeline, ProcessedArticle, TrendAnalysis
 from .streaming import StreamingService, WebSocketManager, StreamEvent, StreamFilter
 from .analytics import DataAnalyticsService, AnalyticsReport, RiskAssessment
+from .token_tracker import TokenCostTracker, get_token_tracker
+from .web_search import WebSearchService, create_web_search_service
+from .flashpoint_detection import FlashpointDetectionService, Flashpoint, create_flashpoint_detection_service
 
 __all__ = [
     "DatabaseService",
@@ -42,4 +45,11 @@ __all__ = [
     "DataAnalyticsService",
     "AnalyticsReport",
     "RiskAssessment",
+    "TokenCostTracker",
+    "get_token_tracker",
+    "WebSearchService",
+    "create_web_search_service",
+    "FlashpointDetectionService",
+    "Flashpoint",
+    "create_flashpoint_detection_service",
 ]

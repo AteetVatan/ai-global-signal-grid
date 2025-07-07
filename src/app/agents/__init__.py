@@ -22,6 +22,7 @@ from .fact_checker import FactChecker
 from .validator import Validator
 from .memory_manager import MemoryManager
 from .logging_auditor import LoggingAuditor
+from .flashpoint_llm_agent import FlashpointLLMAgent
 
 __all__ = [
     "BaseAgent",
@@ -39,4 +40,5 @@ __all__ = [
     "Validator",
     "MemoryManager",
     "LoggingAuditor",
+    "FlashpointLLMAgent",
 ]
