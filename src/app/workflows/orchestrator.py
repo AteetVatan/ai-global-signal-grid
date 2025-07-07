@@ -49,36 +49,39 @@ class MASXOrchestrator:
         """Initialize all available agents."""
         try:
             from ..agents import (
+                FlashpointLLMAgent,
                 DomainClassifier,
-                QueryPlanner,
-                NewsFetcher,
-                EventFetcher,
-                MergeDeduplicator,
-                LanguageResolver,
-                Translator,
-                EntityExtractor,
-                EventAnalyzer,
-                FactChecker,
-                Validator,
-                MemoryManager,
-                LoggingAuditor,
+                # QueryPlanner,
+                # NewsFetcher,
+                # EventFetcher,
+                # MergeDeduplicator,
+                # LanguageResolver,
+                # Translator,
+                # EntityExtractor,
+                # EventAnalyzer,
+                # FactChecker,
+                # Validator,
+                # MemoryManager,
+                # LoggingAuditor,                
             )
 
             # Initialize agents
             self.agents = {
+                "flashpoint_llm_agent": FlashpointLLMAgent(),
                 "domain_classifier": DomainClassifier(),
-                "query_planner": QueryPlanner(),
-                "news_fetcher": NewsFetcher(),
-                "event_fetcher": EventFetcher(),
-                "merge_deduplicator": MergeDeduplicator(),
-                "language_resolver": LanguageResolver(),
-                "translator": Translator(),
-                "entity_extractor": EntityExtractor(),
-                "event_analyzer": EventAnalyzer(),
-                "fact_checker": FactChecker(),
-                "validator": Validator(),
-                "memory_manager": MemoryManager(),
-                "logging_auditor": LoggingAuditor(),
+                # "query_planner": QueryPlanner(),
+                # "news_fetcher": NewsFetcher(),
+                # "event_fetcher": EventFetcher(),
+                # "merge_deduplicator": MergeDeduplicator(),
+                # "language_resolver": LanguageResolver(),
+                # "translator": Translator(),
+                # "entity_extractor": EntityExtractor(),
+                # "event_analyzer": EventAnalyzer(),
+                # "fact_checker": FactChecker(),
+                # "validator": Validator(),
+                # "memory_manager": MemoryManager(),
+                # "logging_auditor": LoggingAuditor(),
+                
             }
 
             self.logger.info(
@@ -113,31 +116,33 @@ class MASXOrchestrator:
 
         # Add nodes for each workflow step
         workflow.add_node("start", self._start_workflow)
+        workflow.add_node("flashpoint_detection", self._run_flashpoint_detection)
         workflow.add_node("domain_classification", self._run_domain_classifier)
-        workflow.add_node("query_planning", self._run_query_planner)
-        workflow.add_node("data_fetching", self._run_data_fetchers)
-        workflow.add_node("merge_deduplication", self._run_merge_deduplicator)
-        workflow.add_node("language_processing", self._run_language_processing)
-        workflow.add_node("entity_extraction", self._run_entity_extractor)
-        workflow.add_node("event_analysis", self._run_event_analyzer)
-        workflow.add_node("fact_checking", self._run_fact_checker)
-        workflow.add_node("validation", self._run_validator)
-        workflow.add_node("memory_storage", self._run_memory_manager)
+        # workflow.add_node("query_planning", self._run_query_planner)
+        # workflow.add_node("data_fetching", self._run_data_fetchers)
+        # workflow.add_node("merge_deduplication", self._run_merge_deduplicator)
+        # workflow.add_node("language_processing", self._run_language_processing)
+        # workflow.add_node("entity_extraction", self._run_entity_extractor)
+        # workflow.add_node("event_analysis", self._run_event_analyzer)
+        # workflow.add_node("fact_checking", self._run_fact_checker)
+        # workflow.add_node("validation", self._run_validator)
+        # workflow.add_node("memory_storage", self._run_memory_manager)
         workflow.add_node("end", self._end_workflow)
 
         # Define workflow edges
         workflow.set_entry_point("start")
-        workflow.add_edge("start", "domain_classification")
-        workflow.add_edge("domain_classification", "query_planning")
-        workflow.add_edge("query_planning", "data_fetching")
-        workflow.add_edge("data_fetching", "merge_deduplication")
-        workflow.add_edge("merge_deduplication", "language_processing")
-        workflow.add_edge("language_processing", "entity_extraction")
-        workflow.add_edge("entity_extraction", "event_analysis")
-        workflow.add_edge("event_analysis", "fact_checking")
-        workflow.add_edge("fact_checking", "validation")
-        workflow.add_edge("validation", "memory_storage")
-        workflow.add_edge("memory_storage", "end")
+        workflow.add_edge("start", "flashpoint_detection")
+        workflow.add_edge("flashpoint_detection", "domain_classification")
+        #workflow.add_edge("domain_classification", "query_planning")
+        # workflow.add_edge("query_planning", "data_fetching")
+        # workflow.add_edge("data_fetching", "merge_deduplication")
+        # workflow.add_edge("merge_deduplication", "language_processing")
+        # workflow.add_edge("language_processing", "entity_extraction")
+        # workflow.add_edge("entity_extraction", "event_analysis")
+        # workflow.add_edge("event_analysis", "fact_checking")
+        # workflow.add_edge("fact_checking", "validation")
+        # workflow.add_edge("validation", "memory_storage")
+        # workflow.add_edge("memory_storage", "end")
         workflow.add_edge("end", END)
 
         return workflow
@@ -189,7 +194,7 @@ class MASXOrchestrator:
         state.run_id = run_id
         state.timestamp = datetime.utcnow()
         state.workflow = WorkflowState(
-            steps=["start", "domain_classification", "query_planning", "data_fetching"],
+            steps=["start", "flashpoint_detection", "domain_classification", "query_planning", "data_fetching"],
             current_step="start",
         )
 
@@ -200,6 +205,59 @@ class MASXOrchestrator:
             output_data={"run_id": run_id},
             run_id=run_id,
         )
+
+        return state
+
+    def _run_flashpoint_detection(self, state: MASXState) -> MASXState:
+        """Run flashpoint detection step using FlashpointLLMAgent."""
+        try:
+            agent = self.agents.get("flashpoint_llm_agent")
+            if not agent:
+                raise WorkflowException("FlashpointLLMAgent not available")
+
+            # Prepare input data for flashpoint detection
+            input_data = {
+                "max_iterations": 5,
+                "target_flashpoints": 10,
+                "max_context_length": 15000,
+                "context": state.metadata.get("context", {})
+            }
+
+            # Run flashpoint detection
+            result = agent.run(input_data, run_id=state.run_id)
+
+            # Update state
+            state.agents["flashpoint_llm_agent"] = agent.state
+            if result.success:
+                state.metadata["flashpoints"] = result.data.get("flashpoints", [])
+                state.metadata["flashpoint_stats"] = {
+                    "total_count": len(result.data.get("flashpoints", [])),
+                    "iterations": result.data.get("iterations", 0),
+                    "search_runs": result.data.get("search_runs", 0),
+                    "llm_runs": result.data.get("llm_runs", 0),
+                    "token_usage": result.data.get("token_usage", {})
+                }
+
+            state.workflow.current_step = "flashpoint_detection"
+
+            log_workflow_step(
+                self.logger,
+                "flashpoint_detection",
+                "flashpoint_detection",
+                input_data=input_data,
+                output_data=result.data,
+                run_id=state.run_id,
+            )
+
+            self.logger.info(
+                f"Flashpoint detection completed: {len(state.metadata.get('flashpoints', []))} flashpoints found",
+                run_id=state.run_id,
+                flashpoint_count=len(state.metadata.get("flashpoints", []))
+            )
+
+        except Exception as e:
+            state.errors.append(f"Flashpoint detection failed: {str(e)}")
+            self.logger.error(f"Flashpoint detection error: {e}", run_id=state.run_id)
 
         return state
 
