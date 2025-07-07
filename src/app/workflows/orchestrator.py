@@ -217,8 +217,8 @@ class MASXOrchestrator:
 
             # Prepare input data for flashpoint detection
             input_data = {
-                "max_iterations": 5,
-                "target_flashpoints": 10,
+                "max_iterations": 10,
+                "target_flashpoints": 20,
                 "max_context_length": 15000,
                 "context": state.metadata.get("context", {})
             }

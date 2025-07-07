@@ -10,13 +10,11 @@ Usage: from app.services.flashpoint_detection import FlashpointDetectionService
     tracker = service.get_entity_tracker()
 """
 
-import pycountry
-from typing import List, Dict, Any, Set, Optional
+from typing import List, Dict, Any, Set
 from pydantic import BaseModel
-import country_converter as coco
 
 from ..config.logging_config import get_logger
-from ..constants import COUNTRY_VARIATIONS
+from ..core.country_normalizer import CountryNormalizer
 
 class Flashpoint(BaseModel):
     """Data model for a flashpoint with title, description, and entities."""
@@ -144,7 +142,7 @@ class FlashpointDetectionService:
         """Initialize flashpoint detection service."""
         self.logger = get_logger(__name__)
         self.entity_tracker = EntityTracker()        
-        self.cc = coco.CountryConverter()
+        self.country_normalizer = CountryNormalizer()
 
     def get_entity_tracker(self) -> EntityTracker:
         """
@@ -153,85 +151,8 @@ class FlashpointDetectionService:
         Returns:
             EntityTracker: Current entity tracker instance
         """
-        return self.entity_tracker
-    
-    def is_country(self, name: str) -> bool:
-        """
-        Check if a name represents a recognized country.
-        
-        Args:
-            name: Entity name to check
-            
-        Returns:
-            bool: True if name is a recognized country
-        """
-        return self.normalize_country_name(name) is not None
-    
-    def normalize_country_name(self, name: str) -> str | None:
-        name = name.strip()
-
-        # Try coco first
-        converted = self.cc.convert(name, to='name_short', not_found=None)
-        if converted and converted.lower() != "not found":
-            return converted
-
-        # Try pycountry
-        try:
-            match = pycountry.countries.search_fuzzy(name)[0]
-            return match.name
-        except LookupError:
-                        # Try common variations
-            normalized = name.lower().strip()            
-            if normalized in COUNTRY_VARIATIONS:
-                try:
-                    pycountry.countries.search_fuzzy(COUNTRY_VARIATIONS[normalized])
-                    return True
-                except LookupError:
-                    pass
-            
-            return False
-
-    def is_country_old(self, name: str) -> bool:
-        """
-        Check if a name represents a recognized country.
-        
-        Args:
-            name: Entity name to check
-            
-        Returns:
-            bool: True if name is a recognized country
-        """
-        try:
-            # Try exact match first
-            pycountry.countries.search_fuzzy(name)
-            return True
-        except LookupError:
-            # Try common variations
-            normalized = name.lower().strip()
-            
-            # Common country name variations
-            variations = {
-                "usa": "United States",
-                "us": "United States",
-                "uk": "United Kingdom",
-                "russia": "Russian Federation",
-                "china": "China",
-                "iran": "Iran",
-                "israel": "Israel",
-                "ukraine": "Ukraine",
-                "taiwan": "Taiwan",
-                "north korea": "North Korea",
-                "south korea": "South Korea",
-            }
-            
-            if normalized in variations:
-                try:
-                    pycountry.countries.search_fuzzy(variations[normalized])
-                    return True
-                except LookupError:
-                    pass
-            
-            return False
+        return self.entity_tracker 
+   
 
     def validate_flashpoint(self, flashpoint: Flashpoint) -> bool:
         """
@@ -248,7 +169,7 @@ class FlashpointDetectionService:
             return False
         
         # Check if at least one entity is a recognized country
-        has_country = any(self.is_country(entity) for entity in flashpoint.entities)
+        has_country = any(self.country_normalizer.is_country(entity) for entity in flashpoint.entities)
         if not has_country:
             self.logger.debug(
                 "Flashpoint rejected - no recognized country",
@@ -358,7 +279,7 @@ class FlashpointDetectionService:
         
         for flashpoint in flashpoints:
             for entity in flashpoint.entities:
-                if self.is_country(entity):
+                if self.country_normalizer.is_country(entity):
                     country = entity.lower()
                     distribution[country] = distribution.get(country, 0) + 1
         

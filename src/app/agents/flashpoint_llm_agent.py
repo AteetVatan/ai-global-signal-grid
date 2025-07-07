@@ -11,18 +11,21 @@ Usage: from app.agents.flashpoint_llm_agent import FlashpointLLMAgent
 """
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel, ValidationError, RootModel
 from copy import deepcopy
 
 from .base import BaseAgent, AgentResult
 from ..core.state import AgentState
 from ..core.exceptions import AgentException
+from ..core.country_normalizer import CountryNormalizer
 from ..services.llm_service import LLMService
 from ..services.web_search import WebSearchService
 from ..services.flashpoint_detection import FlashpointDetectionService, Flashpoint
 from ..services.token_tracker import get_token_tracker
 from ..config.logging_config import get_logger
+from ..config.settings import get_settings
+
 
 
 class FlashpointList(RootModel[List[Flashpoint]]):
@@ -70,14 +73,18 @@ class FlashpointLLMAgent(BaseAgent):
             description="Agent for detecting global geopolitical flashpoints using LLM reasoning"
         )
         
+        self.settings = get_settings()
+         
         # Initialize services
         self.llm_service = LLMService()
         self.web_search = WebSearchService()
         self.flashpoint_service = FlashpointDetectionService()
-        self.token_tracker = get_token_tracker()
-        
+        self.token_tracker = get_token_tracker() 
+        self.country_normalizer = CountryNormalizer()
         # Get entity tracker
         self.entity_tracker = self.flashpoint_service.get_entity_tracker()
+        self.query_cache = {}# key = news_filter +":" +query, value = context, urls
+        self.query_urls = set() # urls that have been searched
 
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
@@ -147,80 +154,134 @@ class FlashpointLLMAgent(BaseAgent):
             "max_context_length": input_data.get("max_context_length", 15000),
             "context": input_data.get("context", ""),
             "existing_flashpoints": input_data.get("existing_flashpoints", [])
-        }
-
+        }        
+    
+    
     def _execute_flashpoint_detection(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute the main flashpoint detection workflow.
-        
+
         Args:
             config: Configuration parameters
-            
+
         Returns:
             Dict containing flashpoints and statistics
         """
         accumulated_flashpoints = []
         iterations = 0
-        
-        while (iterations < config["max_iterations"] and 
-               len(accumulated_flashpoints) < config["target_flashpoints"]):
-            
+
+        while iterations < config["max_iterations"] and len(accumulated_flashpoints) < config["target_flashpoints"]:
             iterations += 1
+
             self.logger.info(
                 f"Starting iteration {iterations}",
                 current_flashpoints=len(accumulated_flashpoints),
                 target=config["target_flashpoints"]
             )
-            
-            # Step 1: Fetch context
-            context = self._fetch_context()
+
+            try:
+                context, urls = self._search_with_cache()
+            except Exception as e:
+                self.logger.error(f"Search with cache failed in iteration {iterations}: {e}")
+                break
+
             if not context:
-                self.logger.warning(
-                    f"No context found in iteration {iterations}"
-                )
+                self.logger.warning("Search exhausted: No context returned.")
+                break
+
+            try:
+                new_flashpoints = self._generate_flashpoints(context)
+            except Exception as e:
+                self.logger.error(f"LLM generation failed in iteration {iterations}: {e}")
                 continue
-            
-            # Step 2: Generate flashpoints using LLM
-            new_flashpoints = self._generate_flashpoints(context)
+
             if not new_flashpoints:
-                self.logger.warning(
-                    f"No flashpoints generated in iteration {iterations}"
-                )
+                self.logger.warning(f"No flashpoints generated in iteration {iterations}")
                 continue
-            
-            # Step 3: Process and deduplicate flashpoints
-            accumulated_flashpoints = self._process_flashpoints(
-                new_flashpoints, accumulated_flashpoints
-            )
-            
-            # Step 4: Add new flashpoints to accumulated list
-            # for flashpoint in processed_flashpoints:
-            #      if len(accumulated_flashpoints) >= config["target_flashpoints"]:
-            #          break
-            #      accumulated_flashpoints.append(flashpoint)
-            
+
+            try:
+                accumulated_flashpoints = self._process_flashpoints(new_flashpoints, accumulated_flashpoints)
+            except Exception as e:
+                self.logger.error(f"Flashpoint processing failed in iteration {iterations}: {e}")
+                continue
+
             self.logger.info(
                 f"Iteration {iterations} completed",
                 new_flashpoints=len(new_flashpoints),
                 total_flashpoints=len(accumulated_flashpoints)
             )
-        
-        # Prepare final result
-        result = {
+
+        return {
             "flashpoints": [fp.model_dump() for fp in accumulated_flashpoints],
             "iterations": iterations,
             "search_runs": self.entity_tracker.search_run,
             "llm_runs": self.entity_tracker.llm_run,
             "token_usage": self.token_tracker.get_summary(),
             "entity_stats": self.entity_tracker.get_stats(),
-            "geographic_distribution": self.flashpoint_service.get_geographic_distribution(
-                accumulated_flashpoints
-            )
+            "geographic_distribution": self.flashpoint_service.get_geographic_distribution(accumulated_flashpoints)
         }
-        
-        return result
+    
 
-    def _fetch_context(self) -> str:
+    def _search_with_cache(self) -> Tuple[str, List[str]]:
+        page = 1
+        news_filter = True        
+        urls = []
+        context = None
+        all_exhausted = False
+        overlap_threshold = 0.5
+        max_pages = 3
+
+        while True:
+            while page <= max_pages:
+                query = self.get_query()
+                query_key = f"{page}:{news_filter}:{query}"
+                
+                if query_key in self.query_cache:
+                    context, new_urls = self.query_cache[query_key]
+                else:
+                    context, new_urls = self._fetch_context(page=page, news_filter=news_filter)
+                    self.query_cache[query_key] = (context, new_urls)                   
+
+                if not context or not new_urls:
+                    if news_filter:
+                        self.logger.info("No results with filter. Switching to unfiltered search.")
+                        news_filter = False
+                        page = 1
+                        continue  # Restart outer loop with unfiltered
+                    else:
+                        self.logger.warning(f"No results at page {page} (news_filter={news_filter}).")
+                        all_exhausted = True
+                        break
+
+                # Check for overlapping URLs
+                overlap = len(set(self.query_urls) & set(new_urls)) / max(len(new_urls), 1)
+                if overlap > overlap_threshold:
+                    self.logger.debug(f"High overlap ({overlap:.2f}). Skipping page {page}.")
+                    page += 1
+                    continue
+
+                urls = new_urls
+                self.query_urls.update(new_urls)
+                break  # Exit inner loop if successful
+
+            # Final exit condition
+            if urls and context:
+                break
+
+            if all_exhausted or not news_filter or page > max_pages:
+                self.logger.warning("Exiting: No results found.")
+                break
+
+        return context or "", urls or []
+
+
+    
+    def get_query(self):
+        exclude_terms = self.entity_tracker.get_exclude_query()
+        query = self.settings.hotspot_query + " " + exclude_terms
+        return query
+
+    def _fetch_context(self, page: int = 1, news_filter: bool = True) -> Tuple[str, List[str]]:
         """
         Fetch news context for flashpoint detection.
         
@@ -230,8 +291,7 @@ class FlashpointLLMAgent(BaseAgent):
         self.entity_tracker.search_run += 1
         
         # Build search query with exclusions
-        exclude_terms = self.entity_tracker.get_exclude_query()
-        query = "global tension news last 24 hours " + exclude_terms
+        query = self.get_query()
         
         self.logger.info(
             "[SearchAgent] Fetching news context...",
@@ -240,8 +300,8 @@ class FlashpointLLMAgent(BaseAgent):
         )
         
         try:
-            context = self.web_search.gather_context(query)
-            return context
+            context, urls = self.web_search.gather_context(query, page=page, news_filter=news_filter)
+            return context, urls
         except Exception as e:
             self.logger.error(
                 "Context fetching failed",
@@ -391,6 +451,9 @@ class FlashpointLLMAgent(BaseAgent):
                 self.entity_tracker.add(flashpoint.entities, geo_entities)
                 existing_flashpoints.append(flashpoint)
                 
+            #remove all flashpoints with no geo entities
+            existing_flashpoints = [fp for fp in existing_flashpoints if self.get_geo_entities(fp.entities)]
+                
         processed = existing_flashpoints
         
         self.logger.info(
@@ -405,9 +468,9 @@ class FlashpointLLMAgent(BaseAgent):
     def get_geo_entities(self, entities: List[str]):
         geo_entities = []
         for entity in entities:
-            if self.flashpoint_service.is_country(entity):
+            if self.country_normalizer.is_country(entity):
                 geo_entities.append(entity)
-        return geo_entities
+        return list(set(geo_entities))
 
     def get_agent_stats(self) -> Dict[str, Any]:
         """

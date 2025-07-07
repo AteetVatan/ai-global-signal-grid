@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", description="Environment name")
     debug: bool = Field(default=True, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
+    
+    #HOTSPOT_QUERY
+    hotspot_query: str = Field(default="global tension news last 24 hours", description="Hotspot query")
 
     # LLM API Configuration
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")

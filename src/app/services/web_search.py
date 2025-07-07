@@ -11,7 +11,7 @@ Usage: from app.services.web_search import WebSearchService
 """
 
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from newspaper import Article
 import time
 
@@ -130,8 +130,8 @@ class WebSearchService:
         
         self.last_request_time = time.time()
 
-    def search_news(self, query: str, new_filter: bool = True, num_results: int = 10, 
-                   date_restrict: str = "d1", sort_by: str = "date") -> List[str]:
+    def search_news(self, query: str, news_filter: bool = True, num_results: int = 10, 
+                   date_restrict: str = "d1", sort_by: str = "date", page: int = 1) -> List[str]:
         """
         Search for news articles using the configured provider.
         
@@ -150,11 +150,12 @@ class WebSearchService:
         try:
             self._rate_limit()
             
-            if new_filter:
+            if news_filter:
                 query = f"{query} {self.NEWS_FILTER}"
             
             if self.provider == "google":
-                return self._google_search(query, num_results, date_restrict, sort_by)
+                urls = self._google_search(query, num_results, date_restrict, sort_by, page)               
+                return urls
             else:
                 raise ConfigurationException(f"Unsupported provider: {self.provider}")
                 
@@ -165,8 +166,10 @@ class WebSearchService:
             )
 
     def _google_search(self, query: str, num_results: int, 
-                      date_restrict: str, sort_by: str) -> List[str]:
+                      date_restrict: str, sort_by: str, page: int = 1) -> List[str]:
         """Execute Google Custom Search API call."""
+        # Calculate start index based on the page (Google starts at 1)
+        start_index = (page - 1) * 10 + 1
         params = {
             "key": self.api_key,
             "cx": self.cx,
@@ -174,6 +177,7 @@ class WebSearchService:
             "dateRestrict": date_restrict,
             "sort": sort_by,
             "num": min(num_results, 10),  # Google API limit
+            "start": start_index
         }
         
         self.logger.debug(
@@ -245,10 +249,10 @@ class WebSearchService:
             return None
 
     def gather_context(self, query: str, max_articles: int = 10, 
-                      min_content_length: int = 100) -> str:
+                      min_content_length: int = 100, page: int = 1, news_filter: bool = True) -> Tuple[str, List[str]]:
         """
         Gather context by searching and extracting multiple articles.
-        
+
         Args:
             query: Search query
             max_articles: Maximum number of articles to process
@@ -265,11 +269,11 @@ class WebSearchService:
             )
             
             # Search for articles
-            urls = self.search_news(query, num_results=max_articles)
+            urls = self.search_news(query, num_results=max_articles, page=page, news_filter=news_filter)
             
             if not urls:
                 self.logger.warning("No search results found", query=query)
-                return ""
+                return "", [] #Tuple[str, List[str]]
             
             # Extract content from articles
             contents = []
@@ -297,7 +301,7 @@ class WebSearchService:
                 total_context_length=len(combined_context)
             )
             
-            return combined_context
+            return combined_context, urls
             
         except Exception as e:
             self.logger.error(
@@ -310,7 +314,7 @@ class WebSearchService:
                 context={"query": query}
             )
 
-    def search_with_exclusions(self, base_query: str, exclude_terms: List[str]) -> str:
+    def search_with_exclusions(self, base_query: str, exclude_terms: List[str], news_filter: bool = True) -> str:
         """
         Search with exclusion terms to avoid duplicate content.
         
@@ -332,7 +336,7 @@ class WebSearchService:
             full_query=full_query
         )
         
-        return self.gather_context(full_query)
+        return self.gather_context(full_query, news_filter=news_filter)
 
     def get_search_stats(self) -> Dict[str, Any]:
         """
