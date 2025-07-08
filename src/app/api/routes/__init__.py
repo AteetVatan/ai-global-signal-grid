@@ -10,4 +10,4 @@ Route modules:
 
 from . import health, workflows, data, services
 
-__all__ = ["health", "workflows", "data", "services"] 
+__all__ = ["health", "workflows", "data", "services"]

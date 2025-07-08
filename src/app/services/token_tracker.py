@@ -23,7 +23,7 @@ from ..config.logging_config import get_logger
 class TokenCostTracker:
     """
     Service for tracking token usage and calculating costs across LLM API calls.
-    
+
     Features:
     - Multi-provider support (OpenAI, Mistral, etc.)
     - Configurable pricing models
@@ -42,30 +42,33 @@ class TokenCostTracker:
         "mistral": {
             "mistral-large": {"input": 0.007, "output": 0.024},
             "mistral-medium": {"input": 0.4, "output": 2.0},
-            "mistral-small": {"input": 0.1, "output": 0.3},  # official API pricing per 1M tokens
-        }
+            "mistral-small": {
+                "input": 0.1,
+                "output": 0.3,
+            },  # official API pricing per 1M tokens
+        },
     }
 
     def __init__(self, provider: str = "openai", model: str = "gpt-4-turbo"):
         """
         Initialize token cost tracker.
-        
+
         Args:
             provider: LLM provider name (openai, mistral, etc.)
             model: Specific model name for pricing
         """
         self.settings = get_settings()
         self.logger = get_logger(__name__)
-        
+
         self.provider = provider
         self.model = model
-        
+
         # Initialize tokenizer for the specified model
         self._init_tokenizer()
-        
+
         # Initialize pricing model
         self._init_pricing()
-        
+
         # Session tracking
         self.session_id = datetime.utcnow().isoformat()
         self.reset_session()
@@ -80,27 +83,25 @@ class TokenCostTracker:
                 self.encoding = tiktoken.get_encoding("cl100k_base")
             self.tokenizer = self.encoding.encode  # unified interface
         elif self.provider == "mistral":
-            self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.1")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                "mistralai/Mistral-7B-Instruct-v0.1"
+            )
         else:
-            raise ValueError(f"Unsupported provider: {self.provider}")        
-
-    
+            raise ValueError(f"Unsupported provider: {self.provider}")
 
     def _init_pricing(self):
         """Initialize pricing model from settings or defaults."""
         # Try to get pricing from settings first
-        pricing_config = getattr(self.settings, 'llm_pricing', None)
-        
+        pricing_config = getattr(self.settings, "llm_pricing", None)
+
         if pricing_config and self.provider in pricing_config:
             self.pricing = pricing_config[self.provider].get(
-                self.model, 
-                self.DEFAULT_PRICING[self.provider][self.model]
+                self.model, self.DEFAULT_PRICING[self.provider][self.model]
             )
         else:
             # Use default pricing
             self.pricing = self.DEFAULT_PRICING.get(self.provider, {}).get(
-                self.model, 
-                {"input": 0.01, "output": 0.03}  # Conservative default
+                self.model, {"input": 0.01, "output": 0.03}  # Conservative default
             )
 
     def reset_session(self):
@@ -110,21 +111,21 @@ class TokenCostTracker:
         self.total_cost = 0.0
         self.call_count = 0
         self.session_start = datetime.utcnow()
-        
+
         self.logger.info(
             "Token cost tracking session started",
             session_id=self.session_id,
             provider=self.provider,
-            model=self.model
+            model=self.model,
         )
 
     def count_tokens(self, text: str) -> int:
         """
         Count tokens in text using the appropriate tokenizer.
-        
+
         Args:
             text: Text to count tokens for
-            
+
         Returns:
             int: Number of tokens
         """
@@ -136,15 +137,15 @@ class TokenCostTracker:
             return len(self.tokenizer.encode(text))
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
-        
+
     def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """
         Calculate cost for input and output tokens.
-        
+
         Args:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
-            
+
         Returns:
             float: Calculated cost in USD
         """
@@ -152,11 +153,15 @@ class TokenCostTracker:
         output_cost = (output_tokens / 1000) * self.pricing["output"]
         return input_cost + output_cost
 
-    def add_call(self, input_tokens: int, output_tokens: int, 
-                 call_context: Optional[Dict[str, Any]] = None):
+    def add_call(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        call_context: Optional[Dict[str, Any]] = None,
+    ):
         """
         Add a new API call to the tracker.
-        
+
         Args:
             input_tokens: Number of input tokens used
             output_tokens: Number of output tokens generated
@@ -176,7 +181,7 @@ class TokenCostTracker:
             output_tokens=output_tokens,
             call_cost=call_cost,
             total_cost=self.total_cost,
-            context=call_context
+            context=call_context,
         )
 
         # Log detailed info for expensive calls (>$0.10)
@@ -186,18 +191,18 @@ class TokenCostTracker:
                 call_cost=call_cost,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                context=call_context
+                context=call_context,
             )
 
     def get_summary(self) -> Dict[str, Any]:
         """
         Get comprehensive usage summary.
-        
+
         Returns:
             Dict containing usage statistics and cost breakdown
         """
         session_duration = datetime.utcnow() - self.session_start
-        
+
         return {
             "session_id": self.session_id,
             "provider": self.provider,
@@ -210,21 +215,23 @@ class TokenCostTracker:
                 self.total_cost / self.call_count if self.call_count > 0 else 0
             ),
             "avg_tokens_per_call": (
-                (self.total_input_tokens + self.total_output_tokens) / self.call_count 
-                if self.call_count > 0 else 0
+                (self.total_input_tokens + self.total_output_tokens) / self.call_count
+                if self.call_count > 0
+                else 0
             ),
             "session_duration_seconds": session_duration.total_seconds(),
             "calls_per_minute": (
                 self.call_count / (session_duration.total_seconds() / 60)
-                if session_duration.total_seconds() > 0 else 0
+                if session_duration.total_seconds() > 0
+                else 0
             ),
-            "pricing_model": self.pricing
+            "pricing_model": self.pricing,
         }
 
     def print_summary(self):
         """Print a formatted summary to console."""
         summary = self.get_summary()
-        
+
         print("\n" + "=" * 60)
         print("TOKEN COST TRACKING SUMMARY")
         print("=" * 60)
@@ -240,53 +247,57 @@ class TokenCostTracker:
         print(f"Calls per minute: {summary['calls_per_minute']:.2f}")
         print("=" * 60)
 
-    def get_cost_estimate(self, input_text: str, expected_output_length: int = 100) -> float:
+    def get_cost_estimate(
+        self, input_text: str, expected_output_length: int = 100
+    ) -> float:
         """
         Estimate cost for a potential API call.
-        
+
         Args:
             input_text: Input text to estimate tokens for
             expected_output_length: Expected output length in characters
-            
+
         Returns:
             float: Estimated cost in USD
         """
         input_tokens = self.count_tokens(input_text)
-        output_tokens = self.count_tokens("x" * expected_output_length)  # Rough estimate
-        
+        output_tokens = self.count_tokens(
+            "x" * expected_output_length
+        )  # Rough estimate
+
         return self.calculate_cost(input_tokens, output_tokens)
 
     def get_optimization_suggestions(self) -> Dict[str, Any]:
         """
         Get cost optimization suggestions based on usage patterns.
-        
+
         Returns:
             Dict containing optimization recommendations
         """
         suggestions = {
             "high_cost_calls": [],
             "efficiency_tips": [],
-            "model_recommendations": []
+            "model_recommendations": [],
         }
-        
+
         if self.call_count > 0:
             avg_cost = self.total_cost / self.call_count
-            
+
             if avg_cost > 0.05:
                 suggestions["high_cost_calls"].append(
                     f"Average call cost (${avg_cost:.4f}) is high. Consider batching requests."
                 )
-            
+
             if self.total_input_tokens > self.total_output_tokens * 10:
                 suggestions["efficiency_tips"].append(
                     "Input tokens are much higher than output tokens. Consider shorter prompts."
                 )
-            
+
             if self.total_cost > 1.0:
                 suggestions["model_recommendations"].append(
                     "Consider using a cheaper model for non-critical operations."
                 )
-        
+
         return suggestions
 
 
@@ -294,22 +305,24 @@ class TokenCostTracker:
 _global_tracker: Optional[TokenCostTracker] = None
 
 
-def get_token_tracker(provider: str = "openai", model: str = "gpt-4-turbo") -> TokenCostTracker:
+def get_token_tracker(
+    provider: str = "openai", model: str = "gpt-4-turbo"
+) -> TokenCostTracker:
     """
     Get or create a global token tracker instance.
-    
+
     Args:
         provider: LLM provider name
         model: Model name for pricing
-        
+
     Returns:
         TokenCostTracker: Global tracker instance
     """
     global _global_tracker
-    
+
     if _global_tracker is None:
         _global_tracker = TokenCostTracker(provider, model)
-    
+
     return _global_tracker
 
 
@@ -317,4 +330,4 @@ def reset_global_tracker():
     """Reset the global token tracker session."""
     global _global_tracker
     if _global_tracker:
-        _global_tracker.reset_session() 
+        _global_tracker.reset_session()

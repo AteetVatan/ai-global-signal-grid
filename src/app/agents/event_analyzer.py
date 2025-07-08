@@ -20,7 +20,7 @@ from ..config.logging_config import get_agent_logger
 class EventAnalyzer(BaseAgent):
     """
     Event Analyzer Agent for clustering and summarizing events.
-    
+
     Responsibilities:
     - Analyze merged articles and events
     - Cluster related items into hotspots
@@ -34,17 +34,15 @@ class EventAnalyzer(BaseAgent):
         self.logger = get_agent_logger("EventAnalyzer")
 
     async def analyze_events(
-        self,
-        merged_articles: List[Dict[str, Any]],
-        merged_events: List[Dict[str, Any]]
+        self, merged_articles: List[Dict[str, Any]], merged_events: List[Dict[str, Any]]
     ) -> AgentResult:
         """
         Analyze and cluster merged articles and events.
-        
+
         Args:
             merged_articles: List of merged news articles
             merged_events: List of merged GDELT events
-            
+
         Returns:
             AgentResult: Contains clustered hotspots and summaries
         """
@@ -52,7 +50,7 @@ class EventAnalyzer(BaseAgent):
             self.logger.info(
                 "Analyzing events and clustering into hotspots",
                 article_count=len(merged_articles),
-                event_count=len(merged_events)
+                event_count=len(merged_events),
             )
 
             # Stub: group all items into a single cluster
@@ -61,31 +59,26 @@ class EventAnalyzer(BaseAgent):
                 "hotspot_id": "hotspot-1",
                 "items": all_items,
                 "summary": self._summarize_cluster(all_items),
-                "cluster_size": len(all_items)
+                "cluster_size": len(all_items),
             }
 
             result = {
                 "hotspots": [cluster],
                 "total_hotspots": 1,
                 "total_items": len(all_items),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
-            
+
             self.logger.info(
-                "Event analysis completed",
-                total_hotspots=1,
-                total_items=len(all_items)
+                "Event analysis completed", total_hotspots=1, total_items=len(all_items)
             )
-            
+
             return AgentResult(
                 success=True,
                 data=result,
-                metadata={
-                    "agent": self.name,
-                    "timestamp": datetime.utcnow()
-                }
+                metadata={"agent": self.name, "timestamp": datetime.utcnow()},
             )
-            
+
         except Exception as e:
             self.logger.error(f"Event analysis failed: {e}")
             raise AgentException(f"Event analysis failed: {str(e)}")
@@ -95,4 +88,4 @@ class EventAnalyzer(BaseAgent):
         if not items:
             return "No items to summarize."
         titles = [item.get("title", "") for item in items if item.get("title")]
-        return f"Cluster of {len(items)} items. Titles: " + "; ".join(titles[:3]) 
+        return f"Cluster of {len(items)} items. Titles: " + "; ".join(titles[:3])

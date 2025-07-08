@@ -28,9 +28,11 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", description="Environment name")
     debug: bool = Field(default=True, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
-    
-    #HOTSPOT_QUERY
-    hotspot_query: str = Field(default="global tension news last 24 hours", description="Hotspot query")
+
+    # HOTSPOT_QUERY
+    hotspot_query: str = Field(
+        default="global tension news last 24 hours", description="Hotspot query"
+    )
 
     # LLM API Configuration
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
@@ -49,7 +51,9 @@ class Settings(BaseSettings):
     )
     mistral_temperature: float = Field(default=0.0, description="Mistral temperature")
     mistral_max_tokens: int = Field(default=4000, description="Mistral max tokens")
-    mistral_token_ref: str = Field(default="mistral-small", description="Mistral token ref")
+    mistral_token_ref: str = Field(
+        default="mistral-small", description="Mistral token ref"
+    )
 
     # Database Configuration (Supabase)
     supabase_url: Optional[str] = Field(
@@ -81,11 +85,11 @@ class Settings(BaseSettings):
     google_cx: Optional[str] = Field(
         default=None, description="Google Custom Search Engine ID"
     )
-    
+
     google_search_base_url: Optional[str] = Field(
         default=None, description="Google search base URL"
-    )        
-        
+    )
+
     gdelt_api_key: Optional[str] = Field(default=None, description="GDELT API key")
     google_translate_api_key: Optional[str] = Field(
         default=None, description="Google Translate API key"

@@ -25,11 +25,15 @@ from .streaming import StreamingService, WebSocketManager, StreamEvent, StreamFi
 from .analytics import DataAnalyticsService, AnalyticsReport, RiskAssessment
 from .token_tracker import TokenCostTracker, get_token_tracker
 from .web_search import WebSearchService, create_web_search_service
-from .flashpoint_detection import FlashpointDetectionService, Flashpoint, create_flashpoint_detection_service
+from .flashpoint_detection import (
+    FlashpointDetectionService,
+    Flashpoint,
+    create_flashpoint_detection_service,
+)
 
 __all__ = [
     "DatabaseService",
-    "TranslationService", 
+    "TranslationService",
     "EmbeddingService",
     "LLMService",
     "DataSourcesService",

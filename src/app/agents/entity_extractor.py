@@ -19,7 +19,7 @@ from ..config.logging_config import get_agent_logger
 class EntityExtractor(BaseAgent):
     """
     Entity Extractor Agent for extracting entities from text content.
-    
+
     Responsibilities:
     - Extract entities (people, organizations, locations, etc.)
     - Structure extracted entities for downstream analysis
@@ -31,16 +31,13 @@ class EntityExtractor(BaseAgent):
         super().__init__("EntityExtractor")
         self.logger = get_agent_logger("EntityExtractor")
 
-    async def extract_entities(
-        self,
-        items: List[Dict[str, Any]]
-    ) -> AgentResult:
+    async def extract_entities(self, items: List[Dict[str, Any]]) -> AgentResult:
         """
         Extract entities from a list of content items.
-        
+
         Args:
             items: List of content items to analyze
-            
+
         Returns:
             AgentResult: Contains extracted entities
         """
@@ -48,37 +45,33 @@ class EntityExtractor(BaseAgent):
             self.logger.info(f"Extracting entities from {len(items)} items")
 
             extracted_results = []
-            
+
             for item in items:
                 text = item.get("content", item.get("title", ""))
                 entities = self._extract_entities_from_text(text)
-                
-                extracted_results.append({
-                    "item_id": item.get("id", ""),
-                    "entities": entities,
-                    "original_item": item
-                })
+
+                extracted_results.append(
+                    {
+                        "item_id": item.get("id", ""),
+                        "entities": entities,
+                        "original_item": item,
+                    }
+                )
 
             result = {
                 "extracted_entities": extracted_results,
                 "total_items": len(items),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
-            
-            self.logger.info(
-                "Entity extraction completed",
-                total_items=len(items)
-            )
-            
+
+            self.logger.info("Entity extraction completed", total_items=len(items))
+
             return AgentResult(
                 success=True,
                 data=result,
-                metadata={
-                    "agent": self.name,
-                    "timestamp": datetime.utcnow()
-                }
+                metadata={"agent": self.name, "timestamp": datetime.utcnow()},
             )
-            
+
         except Exception as e:
             self.logger.error(f"Entity extraction failed: {e}")
             raise AgentException(f"Entity extraction failed: {str(e)}")
@@ -89,14 +82,11 @@ class EntityExtractor(BaseAgent):
         # Here, return a stub list
         if not text:
             return []
-        
+
         # Simple stub: extract capitalized words as entities
         words = text.split()
         entities = []
         for word in words:
             if word.istitle() and len(word) > 2:
-                entities.append({
-                    "text": word,
-                    "type": "UNKNOWN"
-                })
-        return entities 
+                entities.append({"text": word, "type": "UNKNOWN"})
+        return entities

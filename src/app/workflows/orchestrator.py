@@ -14,6 +14,7 @@ Usage: from app.workflows.orchestrator import MASXOrchestrator
 
 import asyncio
 from datetime import datetime
+import json
 from typing import Any, Dict, List, Optional
 
 from langgraph.graph import StateGraph, END
@@ -62,7 +63,7 @@ class MASXOrchestrator:
                 # FactChecker,
                 # Validator,
                 # MemoryManager,
-                # LoggingAuditor,                
+                # LoggingAuditor,
             )
 
             # Initialize agents
@@ -81,7 +82,6 @@ class MASXOrchestrator:
                 # "validator": Validator(),
                 # "memory_manager": MemoryManager(),
                 # "logging_auditor": LoggingAuditor(),
-                
             }
 
             self.logger.info(
@@ -133,7 +133,7 @@ class MASXOrchestrator:
         workflow.set_entry_point("start")
         workflow.add_edge("start", "flashpoint_detection")
         workflow.add_edge("flashpoint_detection", "domain_classification")
-        #workflow.add_edge("domain_classification", "query_planning")
+        # workflow.add_edge("domain_classification", "query_planning")
         # workflow.add_edge("query_planning", "data_fetching")
         # workflow.add_edge("data_fetching", "merge_deduplication")
         # workflow.add_edge("merge_deduplication", "language_processing")
@@ -194,7 +194,13 @@ class MASXOrchestrator:
         state.run_id = run_id
         state.timestamp = datetime.utcnow()
         state.workflow = WorkflowState(
-            steps=["start", "flashpoint_detection", "domain_classification", "query_planning", "data_fetching"],
+            steps=[
+                "start",
+                "flashpoint_detection",
+                "domain_classification",
+                "query_planning",
+                "data_fetching",
+            ],
             current_step="start",
         )
 
@@ -211,6 +217,18 @@ class MASXOrchestrator:
     def _run_flashpoint_detection(self, state: MASXState) -> MASXState:
         """Run flashpoint detection step using FlashpointLLMAgent."""
         try:
+            if self.settings.debug:
+
+                # read json debug_data/flashpoint.json ateet
+                with open(
+                    "src/app/debug_data/flashpoint.json", "r"
+                ) as f:  # check this path
+                    result = json.load(f)
+
+                state.metadata["flashpoints"] = result
+
+                return state
+
             agent = self.agents.get("flashpoint_llm_agent")
             if not agent:
                 raise WorkflowException("FlashpointLLMAgent not available")
@@ -220,7 +238,7 @@ class MASXOrchestrator:
                 "max_iterations": 10,
                 "target_flashpoints": 20,
                 "max_context_length": 15000,
-                "context": state.metadata.get("context", {})
+                "context": state.metadata.get("context", {}),
             }
 
             # Run flashpoint detection
@@ -235,7 +253,7 @@ class MASXOrchestrator:
                     "iterations": result.data.get("iterations", 0),
                     "search_runs": result.data.get("search_runs", 0),
                     "llm_runs": result.data.get("llm_runs", 0),
-                    "token_usage": result.data.get("token_usage", {})
+                    "token_usage": result.data.get("token_usage", {}),
                 }
 
             state.workflow.current_step = "flashpoint_detection"
@@ -252,7 +270,7 @@ class MASXOrchestrator:
             self.logger.info(
                 f"Flashpoint detection completed: {len(state.metadata.get('flashpoints', []))} flashpoints found",
                 run_id=state.run_id,
-                flashpoint_count=len(state.metadata.get("flashpoints", []))
+                flashpoint_count=len(state.metadata.get("flashpoints", [])),
             )
 
         except Exception as e:

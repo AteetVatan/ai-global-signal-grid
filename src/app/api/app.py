@@ -28,7 +28,7 @@ from ..core.exceptions import (
     TranslationException,
     EmbeddingException,
     WorkflowException,
-    AgentException
+    AgentException,
 )
 from .routes import health, workflows, data, services
 
@@ -37,7 +37,7 @@ from .routes import health, workflows, data, services
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger = get_api_logger("AppLifespan")
-    
+
     # Startup
     logger.info("Starting MASX AI System API")
     try:
@@ -46,9 +46,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"API startup failed: {e}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down MASX AI System API")
     try:
@@ -61,13 +61,13 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """
     Create and configure FastAPI application.
-    
+
     Returns:
         FastAPI: Configured application instance
     """
     settings = get_settings()
     logger = get_api_logger("AppFactory")
-    
+
     # Create FastAPI app
     app = FastAPI(
         title="MASX AI-GlobalSignalGrid API",
@@ -76,21 +76,21 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.enable_api_docs else None,
         redoc_url="/redoc" if settings.enable_api_docs else None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
-        lifespan=lifespan
+        lifespan=lifespan,
     )
-    
+
     # Add middleware
     _add_middleware(app, settings)
-    
+
     # Add exception handlers
     _add_exception_handlers(app)
-    
+
     # Add request/response logging
     _add_logging_middleware(app)
-    
+
     # Register routes
     _register_routes(app)
-    
+
     logger.info("FastAPI application created successfully")
     return app
 
@@ -105,10 +105,10 @@ def _add_middleware(app: FastAPI, settings):
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Gzip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)
-    
+
     # Security headers middleware
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
@@ -116,13 +116,15 @@ def _add_middleware(app: FastAPI, settings):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
         return response
 
 
 def _add_exception_handlers(app: FastAPI):
     """Add exception handlers to the application."""
-    
+
     @app.exception_handler(MASXException)
     async def masx_exception_handler(request: Request, exc: MASXException):
         """Handle MASX-specific exceptions."""
@@ -132,12 +134,14 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "MASX-GlobalSignalGrid System Error",
                 "message": str(exc),
                 "type": exc.__class__.__name__,
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(ConfigurationException)
-    async def configuration_exception_handler(request: Request, exc: ConfigurationException):
+    async def configuration_exception_handler(
+        request: Request, exc: ConfigurationException
+    ):
         """Handle configuration exceptions."""
         return JSONResponse(
             status_code=500,
@@ -145,10 +149,10 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Configuration Error",
                 "message": str(exc),
                 "type": "ConfigurationException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(DatabaseException)
     async def database_exception_handler(request: Request, exc: DatabaseException):
         """Handle database exceptions."""
@@ -158,12 +162,14 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Database Error",
                 "message": str(exc),
                 "type": "DatabaseException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(TranslationException)
-    async def translation_exception_handler(request: Request, exc: TranslationException):
+    async def translation_exception_handler(
+        request: Request, exc: TranslationException
+    ):
         """Handle translation exceptions."""
         return JSONResponse(
             status_code=503,
@@ -171,10 +177,10 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Translation Error",
                 "message": str(exc),
                 "type": "TranslationException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(EmbeddingException)
     async def embedding_exception_handler(request: Request, exc: EmbeddingException):
         """Handle embedding exceptions."""
@@ -184,10 +190,10 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Embedding Error",
                 "message": str(exc),
                 "type": "EmbeddingException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(WorkflowException)
     async def workflow_exception_handler(request: Request, exc: WorkflowException):
         """Handle workflow exceptions."""
@@ -197,10 +203,10 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Workflow Error",
                 "message": str(exc),
                 "type": "WorkflowException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(AgentException)
     async def agent_exception_handler(request: Request, exc: AgentException):
         """Handle agent exceptions."""
@@ -210,49 +216,49 @@ def _add_exception_handlers(app: FastAPI):
                 "error": "Agent Error",
                 "message": str(exc),
                 "type": "AgentException",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
-    
+
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
         """Handle general exceptions."""
         logger = get_api_logger("ExceptionHandler")
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
-        
+
         return JSONResponse(
             status_code=500,
             content={
                 "error": "Internal Server Error",
                 "message": "An unexpected error occurred",
                 "type": "Exception",
-                "path": request.url.path
-            }
+                "path": request.url.path,
+            },
         )
 
 
 def _add_logging_middleware(app: FastAPI):
     """Add request/response logging middleware."""
     logger = get_api_logger("RequestLogging")
-    
+
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         """Log all requests and responses."""
         start_time = time.time()
-        
+
         # Log request
         logger.info(
             "Request started",
             method=request.method,
             url=str(request.url),
             client_ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent")
+            user_agent=request.headers.get("user-agent"),
         )
-        
+
         # Process request
         try:
             response = await call_next(request)
-            
+
             # Log response
             process_time = time.time() - start_time
             logger.info(
@@ -260,14 +266,14 @@ def _add_logging_middleware(app: FastAPI):
                 method=request.method,
                 url=str(request.url),
                 status_code=response.status_code,
-                process_time=process_time
+                process_time=process_time,
             )
-            
+
             # Add process time header
             response.headers["X-Process-Time"] = str(process_time)
-            
+
             return response
-            
+
         except Exception as e:
             process_time = time.time() - start_time
             logger.error(
@@ -275,7 +281,7 @@ def _add_logging_middleware(app: FastAPI):
                 method=request.method,
                 url=str(request.url),
                 error=str(e),
-                process_time=process_time
+                process_time=process_time,
             )
             raise
 
@@ -283,33 +289,17 @@ def _add_logging_middleware(app: FastAPI):
 def _register_routes(app: FastAPI):
     """Register API routes."""
     # Health check routes
-    app.include_router(
-        health.router,
-        prefix="/health",
-        tags=["Health"]
-    )
-    
+    app.include_router(health.router, prefix="/health", tags=["Health"])
+
     # Workflow routes
-    app.include_router(
-        workflows.router,
-        prefix="/workflows",
-        tags=["Workflows"]
-    )
-    
+    app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
+
     # Data routes
-    app.include_router(
-        data.router,
-        prefix="/data",
-        tags=["Data"]
-    )
-    
+    app.include_router(data.router, prefix="/data", tags=["Data"])
+
     # Service routes
-    app.include_router(
-        services.router,
-        prefix="/services",
-        tags=["Services"]
-    )
-    
+    app.include_router(services.router, prefix="/services", tags=["Services"])
+
     # Root endpoint
     @app.get("/", tags=["Root"])
     async def root():
@@ -324,6 +314,6 @@ def _register_routes(app: FastAPI):
                 "workflows": "/workflows",
                 "data": "/data",
                 "services": "/services",
-                "docs": "/docs"
-            }
-        } 
+                "docs": "/docs",
+            },
+        }

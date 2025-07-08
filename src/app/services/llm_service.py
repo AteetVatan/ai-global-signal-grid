@@ -66,7 +66,7 @@ class LLMService:
                 raise ConfigurationException("OpenAI not configured")
 
             config = self.settings.get_llm_config("openai")
-            #self.client = OpenAI(api_key=config["api_key"]) #old way
+            # self.client = OpenAI(api_key=config["api_key"]) #old way
             self.client = ChatOpenAI(
                 model_name=config["model"],
                 openai_api_key=config["api_key"],
@@ -89,12 +89,11 @@ class LLMService:
             )
             self.model = config["model"]
             self.temperature = config["temperature"]
-            self.max_tokens =  config["max_tokens"]
+            self.max_tokens = config["max_tokens"]
             self.token_ref = config["token_ref"]
 
         else:
-            raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")        
-
+            raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")
 
     @retry_with_backoff(max_attempts=3, base_delay=1.0)
     def generate_text(
@@ -292,7 +291,7 @@ class LLMService:
         """Reset usage statistics."""
         self.total_tokens = 0
         self.total_cost = 0.0
-        
+
     def __safe_encoding_for_model(self):
         try:
             return tiktoken.encoding_for_model(self.model)

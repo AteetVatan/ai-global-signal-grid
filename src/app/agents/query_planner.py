@@ -22,7 +22,7 @@ from ..config.logging_config import get_agent_logger
 class QueryPlanner(BaseAgent):
     """
     Query Planner Agent for formulating optimized search queries.
-    
+
     Responsibilities:
     - Generate search queries based on domain and context
     - Plan GDELT API queries with appropriate filters
@@ -41,16 +41,16 @@ class QueryPlanner(BaseAgent):
         self,
         domain: str,
         context: Optional[Dict[str, Any]] = None,
-        time_range: Optional[str] = "24h"
+        time_range: Optional[str] = "24h",
     ) -> AgentResult:
         """
         Plan search queries based on domain and context.
-        
+
         Args:
             domain: Domain classification (e.g., "conflict", "economy")
             context: Additional context for query planning
             time_range: Time range for queries (e.g., "24h", "7d")
-            
+
         Returns:
             AgentResult: Contains planned queries for different sources
         """
@@ -59,52 +59,53 @@ class QueryPlanner(BaseAgent):
                 "Planning queries",
                 domain=domain,
                 time_range=time_range,
-                context=context
+                context=context,
             )
 
             # Generate Google News RSS queries
-            news_queries = await self._generate_news_queries(domain, context, time_range)
-            
+            news_queries = await self._generate_news_queries(
+                domain, context, time_range
+            )
+
             # Generate GDELT queries
-            gdelt_queries = await self._generate_gdelt_queries(domain, context, time_range)
-            
+            gdelt_queries = await self._generate_gdelt_queries(
+                domain, context, time_range
+            )
+
             # Check for recent similar queries to avoid duplicates
             await self._check_query_history(news_queries + gdelt_queries)
-            
+
             result = {
                 "news_queries": news_queries,
                 "gdelt_queries": gdelt_queries,
                 "domain": domain,
                 "time_range": time_range,
-                "query_count": len(news_queries) + len(gdelt_queries)
+                "query_count": len(news_queries) + len(gdelt_queries),
             }
-            
+
             self.logger.info(
                 "Query planning completed",
                 query_count=result["query_count"],
                 news_queries=len(news_queries),
-                gdelt_queries=len(gdelt_queries)
+                gdelt_queries=len(gdelt_queries),
             )
-            
+
             return AgentResult(
                 success=True,
                 data=result,
                 metadata={
                     "agent": self.name,
                     "timestamp": datetime.utcnow(),
-                    "domain": domain
-                }
+                    "domain": domain,
+                },
             )
-            
+
         except Exception as e:
             self.logger.error(f"Query planning failed: {e}")
             raise AgentException(f"Query planning failed: {str(e)}")
 
     async def _generate_news_queries(
-        self,
-        domain: str,
-        context: Optional[Dict[str, Any]],
-        time_range: str
+        self, domain: str, context: Optional[Dict[str, Any]], time_range: str
     ) -> List[Dict[str, Any]]:
         """Generate Google News RSS queries."""
         prompt = f"""
@@ -120,24 +121,26 @@ class QueryPlanner(BaseAgent):
         - description: Brief description of what this query targets
         - priority: High/Medium/Low priority
         """
-        
+
         response = await self.llm_service.generate_text(prompt)
-        
+
         # Parse response and format queries
         queries = []
         try:
             # Simple parsing - in production, use proper JSON parsing
-            lines = response.split('\n')
+            lines = response.split("\n")
             for line in lines:
-                if 'query' in line.lower() and ':' in line:
-                    query_text = line.split(':')[1].strip().strip('"')
+                if "query" in line.lower() and ":" in line:
+                    query_text = line.split(":")[1].strip().strip('"')
                     if query_text:
-                        queries.append({
-                            "query": query_text,
-                            "source": "google_news",
-                            "time_range": time_range,
-                            "domain": domain
-                        })
+                        queries.append(
+                            {
+                                "query": query_text,
+                                "source": "google_news",
+                                "time_range": time_range,
+                                "domain": domain,
+                            }
+                        )
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
@@ -146,17 +149,14 @@ class QueryPlanner(BaseAgent):
                     "query": f"{domain} news",
                     "source": "google_news",
                     "time_range": time_range,
-                    "domain": domain
+                    "domain": domain,
                 }
             ]
-        
+
         return queries
 
     async def _generate_gdelt_queries(
-        self,
-        domain: str,
-        context: Optional[Dict[str, Any]],
-        time_range: str
+        self, domain: str, context: Optional[Dict[str, Any]], time_range: str
     ) -> List[Dict[str, Any]]:
         """Generate GDELT API queries."""
         prompt = f"""
@@ -173,26 +173,28 @@ class QueryPlanner(BaseAgent):
         - locations: Geographic locations to focus on
         - description: Brief description of what this query targets
         """
-        
+
         response = await self.llm_service.generate_text(prompt)
-        
+
         # Parse response and format queries
         queries = []
         try:
             # Simple parsing - in production, use proper JSON parsing
-            lines = response.split('\n')
+            lines = response.split("\n")
             for line in lines:
-                if 'keywords' in line.lower() and ':' in line:
-                    keywords_text = line.split(':')[1].strip().strip('"')
+                if "keywords" in line.lower() and ":" in line:
+                    keywords_text = line.split(":")[1].strip().strip('"')
                     if keywords_text:
-                        queries.append({
-                            "keywords": keywords_text.split(','),
-                            "source": "gdelt",
-                            "time_range": time_range,
-                            "domain": domain,
-                            "themes": [],
-                            "locations": []
-                        })
+                        queries.append(
+                            {
+                                "keywords": keywords_text.split(","),
+                                "source": "gdelt",
+                                "time_range": time_range,
+                                "domain": domain,
+                                "themes": [],
+                                "locations": [],
+                            }
+                        )
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
@@ -203,68 +205,66 @@ class QueryPlanner(BaseAgent):
                     "time_range": time_range,
                     "domain": domain,
                     "themes": [],
-                    "locations": []
+                    "locations": [],
                 }
             ]
-        
+
         return queries
 
     async def _check_query_history(self, queries: List[Dict[str, Any]]) -> None:
         """Check recent query history to avoid duplicates."""
         try:
             # Get recent queries from database
-            recent_queries = await self.database_service.get_recent_queries(
-                hours=24
-            )
-            
+            recent_queries = await self.database_service.get_recent_queries(hours=24)
+
             # Simple duplicate detection
             for query in queries:
                 query_text = query.get("query", str(query.get("keywords", [])))
                 for recent in recent_queries:
                     if query_text.lower() in recent.get("query", "").lower():
-                        self.logger.info(f"Similar query found in history: {query_text}")
+                        self.logger.info(
+                            f"Similar query found in history: {query_text}"
+                        )
                         # Could modify query or skip it
-                        
+
         except Exception as e:
             self.logger.warning(f"Failed to check query history: {e}")
 
     async def optimize_queries(
-        self,
-        queries: List[Dict[str, Any]],
-        feedback: Optional[Dict[str, Any]] = None
+        self, queries: List[Dict[str, Any]], feedback: Optional[Dict[str, Any]] = None
     ) -> AgentResult:
         """
         Optimize queries based on feedback or performance data.
-        
+
         Args:
             queries: List of queries to optimize
             feedback: Performance feedback or results data
-            
+
         Returns:
             AgentResult: Contains optimized queries
         """
         try:
             self.logger.info("Optimizing queries", query_count=len(queries))
-            
+
             # Simple optimization logic
             optimized_queries = []
             for query in queries:
                 # Add time-based modifiers for better results
                 if "news" in query.get("query", "").lower():
                     query["query"] += " when:1d"
-                
+
                 optimized_queries.append(query)
-            
+
             return AgentResult(
                 success=True,
                 data={"optimized_queries": optimized_queries},
                 metadata={
                     "agent": self.name,
                     "timestamp": datetime.utcnow(),
-                    "optimization_type": "time_modifiers"
-                }
+                    "optimization_type": "time_modifiers",
+                },
             )
-            
+
         except Exception as e:
             self.logger.error(f"Query optimization failed: {e}")
-            raise AgentException(f"Query optimization failed: {str(e)}") 
+            raise AgentException(f"Query optimization failed: {str(e)}")

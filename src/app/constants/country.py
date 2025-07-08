@@ -5,7 +5,6 @@ COUNTRY_VARIATIONS = {
     "u.s.a.": "United States",
     "america": "United States",
     "united states of america": "United States",
-
     "uk": "United Kingdom",
     "u.k.": "United Kingdom",
     "great britain": "United Kingdom",
@@ -14,13 +13,10 @@ COUNTRY_VARIATIONS = {
     "wales": "United Kingdom",
     "northern ireland": "United Kingdom",
     "britain": "United Kingdom",
-
     "russia": "Russian Federation",
     "russian federation": "Russian Federation",
-
     "iran": "Iran",
     "persia": "Iran",
-
     "syria": "Syrian Arab Republic",
     "venezuela": "Venezuela, Bolivarian Republic of",
     "bolivia": "Bolivia, Plurinational State of",
@@ -30,15 +26,12 @@ COUNTRY_VARIATIONS = {
     "north korea": "Korea, Democratic People's Republic of",
     "dprk": "Korea, Democratic People's Republic of",
     "roc": "Korea, Republic of",
-
     "taiwan": "Taiwan, Province of China",
     "republic of china": "Taiwan, Province of China",
-
     "palestine": "Palestine, State of",
     "occupied palestinian territories": "Palestine, State of",
     "west bank": "Palestine, State of",
     "gaza": "Palestine, State of",
-
     "burma": "Myanmar",
     "czech republic": "Czechia",
     "ivory coast": "Côte d'Ivoire",
@@ -55,7 +48,6 @@ COUNTRY_VARIATIONS = {
     "republic of congo": "Congo",
     "congo-brazzaville": "Congo",
     "congo-kinshasa": "Congo, The Democratic Republic of the",
-
     "china": "China",
     "people's republic of china": "China",
     "prc": "China",
@@ -67,5 +59,5 @@ COUNTRY_VARIATIONS = {
     "uae": "United Arab Emirates",
     "emirates": "United Arab Emirates",
     "holland": "Netherlands",
-    "slovak republic": "Slovakia"
+    "slovak republic": "Slovakia",
 }

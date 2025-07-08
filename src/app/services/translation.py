@@ -11,11 +11,12 @@ Provides multilingual translation capabilities with:
 
 Usage:
     from app.services.translation import TranslationService
-    
+
     translator = TranslationService()
     translated = await translator.translate("Hello world", target_lang="es")
     detected = await translator.detect_language("Bonjour le monde")
 """
+
 import asyncio
 import hashlib
 import json
@@ -35,6 +36,7 @@ from ..config.logging_config import get_service_logger
 
 class TranslationProvider(Enum):
     """Supported translation providers."""
+
     GOOGLE = "google"
     DEEPL = "deepl"
     LOCAL = "local"
@@ -43,12 +45,13 @@ class TranslationProvider(Enum):
 @dataclass
 class TranslationRequest:
     """Translation request data."""
+
     text: str
     source_lang: Optional[str] = None
     target_lang: str = "en"
     provider: TranslationProvider = TranslationProvider.GOOGLE
     cache_key: Optional[str] = None
-    
+
     def __post_init__(self):
         if self.cache_key is None:
             # Generate cache key from text and languages
@@ -59,6 +62,7 @@ class TranslationRequest:
 @dataclass
 class TranslationResult:
     """Translation result data."""
+
     original_text: str
     translated_text: str
     source_lang: str
@@ -72,6 +76,7 @@ class TranslationResult:
 @dataclass
 class LanguageDetectionResult:
     """Language detection result data."""
+
     text: str
     detected_lang: str
     confidence: float = 1.0
@@ -84,9 +89,13 @@ class TranslationService:
     def __init__(self, source_lang: str = "auto", target_lang: str = "en"):
         self.source_lang = source_lang
         self.target_lang = target_lang
-        self.translator = GoogleTranslator(source=self.source_lang, target=self.target_lang)
+        self.translator = GoogleTranslator(
+            source=self.source_lang, target=self.target_lang
+        )
 
-    def translate(self, text: str, source_lang: str = None, target_lang: str = None) -> str:
+    def translate(
+        self, text: str, source_lang: str = None, target_lang: str = None
+    ) -> str:
         """
         Translate text from source_lang to target_lang using deep-translator.
         If source_lang or target_lang is not provided, use defaults.
@@ -100,10 +109,10 @@ class TranslationService:
     async def detect_language(self, text: str) -> LanguageDetectionResult:
         """
         Detect the language of the given text.
-        
+
         Args:
             text: Text to detect language for
-            
+
         Returns:
             LanguageDetectionResult: Language detection result
         """
@@ -112,106 +121,107 @@ class TranslationService:
                 # Use langdetect for language detection
                 loop = asyncio.get_event_loop()
                 detected_lang = await loop.run_in_executor(None, detect, text)
-                
-                result = LanguageDetectionResult(
-                    text=text,
-                    detected_lang=detected_lang
-                )
-                
+
+                result = LanguageDetectionResult(text=text, detected_lang=detected_lang)
+
                 self.logger.debug(f"Language detected: {detected_lang}")
                 return result
-                
+
             except Exception as e:
                 self.logger.error(f"Language detection failed: {e}")
                 raise TranslationException(f"Language detection failed: {str(e)}")
-    
+
     async def translate_batch(
         self,
         texts: List[str],
         target_lang: str = "en",
         source_lang: Optional[str] = None,
         provider: Optional[TranslationProvider] = None,
-        max_concurrent: int = 5
+        max_concurrent: int = 5,
     ) -> List[TranslationResult]:
         """
         Translate multiple texts in parallel.
-        
+
         Args:
             texts: List of texts to translate
             target_lang: Target language code
             source_lang: Source language code
             provider: Translation provider to use
             max_concurrent: Maximum concurrent translations
-            
+
         Returns:
             List of translation results
         """
         with measure_execution_time("translate_batch"):
             try:
                 semaphore = asyncio.Semaphore(max_concurrent)
-                
+
                 async def translate_single(text: str) -> TranslationResult:
                     async with semaphore:
                         return await self.translate(
                             text=text,
                             target_lang=target_lang,
                             source_lang=source_lang,
-                            provider=provider
+                            provider=provider,
                         )
-                
+
                 tasks = [translate_single(text) for text in texts]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                
+
                 # Handle exceptions
                 translation_results = []
                 for i, result in enumerate(results):
                     if isinstance(result, Exception):
                         self.logger.error(f"Translation {i} failed: {result}")
                         # Return original text as fallback
-                        translation_results.append(TranslationResult(
-                            original_text=texts[i],
-                            translated_text=texts[i],
-                            source_lang=source_lang or "unknown",
-                            target_lang=target_lang,
-                            confidence=0.0
-                        ))
+                        translation_results.append(
+                            TranslationResult(
+                                original_text=texts[i],
+                                translated_text=texts[i],
+                                source_lang=source_lang or "unknown",
+                                target_lang=target_lang,
+                                confidence=0.0,
+                            )
+                        )
                     else:
                         translation_results.append(result)
-                
-                self.logger.info(f"Batch translation completed: {len(translation_results)} texts")
+
+                self.logger.info(
+                    f"Batch translation completed: {len(translation_results)} texts"
+                )
                 return translation_results
-                
+
             except Exception as e:
                 self.logger.error(f"Batch translation failed: {e}")
                 raise TranslationException(f"Batch translation failed: {str(e)}")
-    
+
     async def _check_rate_limit(self, provider: TranslationProvider):
         """Check and enforce rate limits for providers."""
         current_time = asyncio.get_event_loop().time()
         last_request = self._rate_limiters.get(provider, 0)
-        
+
         # Rate limits (requests per second)
         rate_limits = {
             TranslationProvider.GOOGLE: 10,  # 10 requests per second
-            TranslationProvider.DEEPL: 5,    # 5 requests per second
-            TranslationProvider.LOCAL: 100   # 100 requests per second
+            TranslationProvider.DEEPL: 5,  # 5 requests per second
+            TranslationProvider.LOCAL: 100,  # 100 requests per second
         }
-        
+
         min_interval = 1.0 / rate_limits.get(provider, 10)
-        
+
         if current_time - last_request < min_interval:
             sleep_time = min_interval - (current_time - last_request)
             await asyncio.sleep(sleep_time)
-        
+
         self._rate_limiters[provider] = current_time
-    
+
     def get_supported_languages(self, provider: TranslationProvider) -> Dict[str, str]:
         """
         Get supported languages for a provider.
-        
+
         Args:
             provider: Translation provider
-            
+
         Returns:
             Dictionary mapping language codes to language names
         """
@@ -311,19 +321,19 @@ class TranslationService:
             "nr": "Southern Ndebele",
             "nd": "Northern Ndebele",
         }
-        
+
         return languages
-    
+
     def clear_cache(self):
         """Clear the translation cache."""
         cache_size = len(self._cache)
         self._cache.clear()
         self.logger.info(f"Translation cache cleared: {cache_size} entries")
-    
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get translation cache statistics.
-        
+
         Returns:
             Dictionary with cache statistics
         """
@@ -333,13 +343,13 @@ class TranslationService:
             "rate_limiters": {
                 provider.value: last_request
                 for provider, last_request in self._rate_limiters.items()
-            }
+            },
         }
-    
+
     async def health_check(self) -> Dict[str, Any]:
         """
         Perform translation service health check.
-        
+
         Returns:
             Dictionary with health check results
         """
@@ -347,9 +357,9 @@ class TranslationService:
             health_status = {
                 "status": "healthy",
                 "timestamp": asyncio.get_event_loop().time(),
-                "providers": {}
+                "providers": {},
             }
-            
+
             # Check Google Translate
             if self._google_translator:
                 try:
@@ -357,35 +367,35 @@ class TranslationService:
                     test_result = await self.translate("Hello", target_lang="es")
                     health_status["providers"]["google"] = {
                         "status": "healthy",
-                        "test_result": test_result.translated_text
+                        "test_result": test_result.translated_text,
                     }
                 except Exception as e:
                     health_status["providers"]["google"] = {
                         "status": "error",
-                        "error": str(e)
+                        "error": str(e),
                     }
                     health_status["status"] = "unhealthy"
             else:
                 health_status["providers"]["google"] = {"status": "not_configured"}
-            
+
             # Check DeepL
             if self._deepl_api_key:
                 health_status["providers"]["deepl"] = {"status": "configured"}
             else:
                 health_status["providers"]["deepl"] = {"status": "not_configured"}
-            
+
             # Check local model
             if self._local_model:
                 health_status["providers"]["local"] = {"status": "configured"}
             else:
                 health_status["providers"]["local"] = {"status": "not_configured"}
-            
+
             return health_status
-            
+
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return {
                 "status": "error",
                 "timestamp": asyncio.get_event_loop().time(),
-                "error": str(e)
-            } 
+                "error": str(e),
+            }

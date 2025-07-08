@@ -22,12 +22,12 @@ app = create_app()
 
 if __name__ == "__main__":
     settings = get_settings()
-    
+
     # Run the application
     uvicorn.run(
         "src.main:app",
         host=settings.api_host or "0.0.0.0",
         port=settings.api_port or 8000,
         reload=settings.api_reload or False,
-        log_level=settings.log_level.lower() if settings.log_level else "info"
-    ) 
+        log_level=settings.log_level.lower() if settings.log_level else "info",
+    )

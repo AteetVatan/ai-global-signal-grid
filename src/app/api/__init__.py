@@ -9,7 +9,7 @@ Provides REST API endpoints for:
 
 Usage:
     from app.api import create_app
-    
+
     app = create_app()
     uvicorn.run(app, host="0.0.0.0", port=8000)
 """
@@ -20,7 +20,7 @@ from .routes import health, workflows, data, services
 __all__ = [
     "create_app",
     "health",
-    "workflows", 
+    "workflows",
     "data",
     "services",
-] 
+]

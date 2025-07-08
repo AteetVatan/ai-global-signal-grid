@@ -7,7 +7,7 @@ import sys
 import json
 
 # Configure logging for debug
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     input_data = {}
     if len(sys.argv) > 1:
         try:
-            with open(sys.argv[1], 'r', encoding='utf-8') as f:
+            with open(sys.argv[1], "r", encoding="utf-8") as f:
                 input_data = json.load(f)
             print(f"[DEBUG] Loaded input data from {sys.argv[1]}")
         except Exception as e:
@@ -43,8 +43,10 @@ def main():
     except Exception as e:
         print(f"[FATAL] Exception during workflow: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(2)
 
+
 if __name__ == "__main__":
-    main() 
+    main()
