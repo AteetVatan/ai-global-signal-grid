@@ -10,14 +10,14 @@ This agent is responsible for:
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-
+import json
 from .base import BaseAgent, AgentResult
 from ..services.llm_service import LLMService
 from ..services.database import DatabaseService
 from ..core.state import AgentState
 from ..core.exceptions import AgentException
 from ..config.logging_config import get_agent_logger
-
+import re
 
 class QueryPlanner(BaseAgent):
     """
@@ -36,58 +36,77 @@ class QueryPlanner(BaseAgent):
         self.llm_service = LLMService()
         self.database_service = DatabaseService()
         self.logger = get_agent_logger("QueryPlanner")
+        
+    def execute(self, input_data: Dict[str, Any]) -> AgentResult:
+        try: 
+            # Prepare input data
+            # Validate input
+            if not self.validate_input(input_data):
+                raise AgentException("Invalid input: missing title or description or entities or domains")            
 
-    async def plan_queries(
+            return self.plan_queries(input_data)
+
+        except KeyError as e:
+            return AgentResult(success=False, error=f"Missing required input: {str(e)}")
+
+        except Exception as e:
+            return AgentResult(success=False, error=f"QueryPlanner failed: {str(e)}")
+
+    def plan_queries(
         self,
-        domain: str,
-        context: Optional[Dict[str, Any]] = None,
-        time_range: Optional[str] = "24h",
+        input_data: Dict[str, Any]
     ) -> AgentResult:
         """
         Plan search queries based on domain and context.
 
         Args:
-            domain: Domain classification (e.g., "conflict", "economy")
-            context: Additional context for query planning
-            time_range: Time range for queries (e.g., "24h", "7d")
+            input_data: Input data containing title, description, entities, and domains
 
         Returns:
             AgentResult: Contains planned queries for different sources
         """
         try:
+            
+            # input_data = {
+            #     "title": title,
+            #     "description": description,
+            #     "entities": entities,
+            #     "domains": domains,
+            # }
+            
             self.logger.info(
                 "Planning queries",
-                domain=domain,
-                time_range=time_range,
-                context=context,
+                title=input_data.get("title", ""),
+                description=input_data.get("description", ""),
+                entities=input_data.get("entities", []),
+                domains=input_data.get("domains", []),
             )
 
             # Generate Google News RSS queries
-            news_queries = await self._generate_news_queries(
-                domain, context, time_range
-            )
+            queries = self._generate_news_queries(input_data)
 
             # Generate GDELT queries
-            gdelt_queries = await self._generate_gdelt_queries(
-                domain, context, time_range
-            )
+            #gdelt_queries = self._generate_gdelt_queries(input_data)
+            #instead of this use all entity combinations
 
             # Check for recent similar queries to avoid duplicates
-            await self._check_query_history(news_queries + gdelt_queries)
+            #self._check_query_history(news_queries + gdelt_queries)
+            
+            #queries validation
+            queries = self.safe_flatten_queries(queries)
 
             result = {
-                "news_queries": news_queries,
-                "gdelt_queries": gdelt_queries,
-                "domain": domain,
-                "time_range": time_range,
-                "query_count": len(news_queries) + len(gdelt_queries),
+                "queries": queries,
+                #"gdelt_queries": gdelt_queries,
+                "domains": input_data.get("domains", []),
+                "query_count": len(queries) #+ len(gdelt_queries),
             }
 
             self.logger.info(
                 "Query planning completed",
                 query_count=result["query_count"],
-                news_queries=len(news_queries),
-                gdelt_queries=len(gdelt_queries),
+                queries=len(queries),
+                #gdelt_queries=len(gdelt_queries),
             )
 
             return AgentResult(
@@ -96,7 +115,7 @@ class QueryPlanner(BaseAgent):
                 metadata={
                     "agent": self.name,
                     "timestamp": datetime.utcnow(),
-                    "domain": domain,
+                    "domains": input_data.get("domains", []),
                 },
             )
 
@@ -104,67 +123,77 @@ class QueryPlanner(BaseAgent):
             self.logger.error(f"Query planning failed: {e}")
             raise AgentException(f"Query planning failed: {str(e)}")
 
-    async def _generate_news_queries(
-        self, domain: str, context: Optional[Dict[str, Any]], time_range: str
+    def _generate_news_queries(
+        self, input_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Generate Google News RSS queries."""
+        
+        title = input_data.get("title", "")
+        description = input_data.get("description", "")
+        entities = input_data.get("entities", [])
+        domains = input_data.get("domains", [])
+        
         prompt = f"""
-        Generate Google News RSS search queries for domain: {domain}
-        Time range: {time_range}
-        Context: {context or 'None'}
-        
-        Generate 3-5 specific, relevant queries that will return high-quality news articles.
-        Focus on current events, breaking news, and trending topics in this domain.
-        
+        You are a geopolitical news analyst. Your task is to generate 1000 search queries that people might use to find news related to a global flashpoint.
+        Use diverse perspectives: military, economic, cultural, religious, tech, environmental, migration, ideological, legal, civilizational.
+        Include synonyms, abbreviations, slang, location names, and domain-specific terms.
+        Each query should be short (max 6 words), realistic, and phrased the way a journalist, civilian, policymaker, activist, or intelligence analyst might search.        
+        for domains: {domains}
+        Title: {title}
+        Description: {description}
+        Entities: {entities}
+        Domains: {domains}
+        Generate specific, relevant queries that will return high-quality news articles.
+        Focus on current events, breaking news, and trending topics in this domain.        
         Return as JSON array with objects containing:
         - query: The search query string
-        - description: Brief description of what this query targets
-        - priority: High/Medium/Low priority
         """
 
-        response = await self.llm_service.generate_text(prompt)
+        response = self.llm_service.generate_text(prompt)
 
         # Parse response and format queries
         queries = []
         try:
             # Simple parsing - in production, use proper JSON parsing
-            lines = response.split("\n")
-            for line in lines:
-                if "query" in line.lower() and ":" in line:
-                    query_text = line.split(":")[1].strip().strip('"')
-                    if query_text:
-                        queries.append(
-                            {
-                                "query": query_text,
-                                "source": "google_news",
-                                "time_range": time_range,
-                                "domain": domain,
-                            }
-                        )
+            parsed = json.loads(response)
+            for item in parsed:
+                query_text = item.get("query")
+                if query_text:
+                    queries.append({
+                        "query": query_text,
+                        "source": "google_news",
+                    })
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
             queries = [
                 {
-                    "query": f"{domain} news",
+                    "query": f"{domains} news",
                     "source": "google_news",
-                    "time_range": time_range,
-                    "domain": domain,
+                    "domains": domains,
                 }
             ]
 
         return queries
 
-    async def _generate_gdelt_queries(
-        self, domain: str, context: Optional[Dict[str, Any]], time_range: str
+    def _generate_gdelt_queries(
+        self, input_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Generate GDELT API queries."""
-        prompt = f"""
-        Generate GDELT API search parameters for domain: {domain}
-        Time range: {time_range}
-        Context: {context or 'None'}
         
-        Generate 2-3 GDELT query configurations that will return relevant events.
+        title = input_data.get("title", "")
+        description = input_data.get("description", "")
+        entities = input_data.get("entities", [])
+        domains = input_data.get("domains", [])
+        
+        prompt = f"""
+        Generate GDELT API search parameters for domains: {domains}
+        Title: {title}
+        Description: {description}
+        Entities: {entities}
+        Domains: {domains}  
+        
+        Generate GDELT query configurations that will return relevant events.
         Consider themes, keywords, and geographic filters appropriate for this domain.
         
         Return as JSON array with objects containing:
@@ -174,36 +203,40 @@ class QueryPlanner(BaseAgent):
         - description: Brief description of what this query targets
         """
 
-        response = await self.llm_service.generate_text(prompt)
+        response = self.llm_service.generate_text(prompt)
 
         # Parse response and format queries
         queries = []
         try:
-            # Simple parsing - in production, use proper JSON parsing
-            lines = response.split("\n")
-            for line in lines:
-                if "keywords" in line.lower() and ":" in line:
-                    keywords_text = line.split(":")[1].strip().strip('"')
-                    if keywords_text:
-                        queries.append(
-                            {
-                                "keywords": keywords_text.split(","),
-                                "source": "gdelt",
-                                "time_range": time_range,
-                                "domain": domain,
-                                "themes": [],
-                                "locations": [],
-                            }
-                        )
+            parsed = json.loads(response)  # Proper JSON parsing
+            if isinstance(parsed, list):
+                for item in parsed:
+                    keywords = item.get("keywords", [])
+                    themes = item.get("themes", [])
+                    locations = item.get("locations", [])
+                    description = item.get("description", "")
+
+                    if isinstance(keywords, list) and keywords:
+                        queries.append({
+                            "keywords": keywords,
+                            "themes": themes,
+                            "locations": locations,
+                            "description": description,
+                            "domains": domains,
+                            "source": "gdelt"
+                        })
+            else:
+                print("[ERROR] Parsed response is not a list.")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse JSON from response: {e}")
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
             queries = [
                 {
-                    "keywords": [domain],
+                    "keywords": [domains],
                     "source": "gdelt",
-                    "time_range": time_range,
-                    "domain": domain,
+                    "domains": domains,
                     "themes": [],
                     "locations": [],
                 }
@@ -211,11 +244,11 @@ class QueryPlanner(BaseAgent):
 
         return queries
 
-    async def _check_query_history(self, queries: List[Dict[str, Any]]) -> None:
+    def _check_query_history(self, queries: List[Dict[str, Any]]) -> None:
         """Check recent query history to avoid duplicates."""
         try:
             # Get recent queries from database
-            recent_queries = await self.database_service.get_recent_queries(hours=24)
+            recent_queries = self.database_service.get_recent_queries(hours=24)
 
             # Simple duplicate detection
             for query in queries:
@@ -230,7 +263,7 @@ class QueryPlanner(BaseAgent):
         except Exception as e:
             self.logger.warning(f"Failed to check query history: {e}")
 
-    async def optimize_queries(
+    def optimize_queries(
         self, queries: List[Dict[str, Any]], feedback: Optional[Dict[str, Any]] = None
     ) -> AgentResult:
         """
@@ -268,3 +301,78 @@ class QueryPlanner(BaseAgent):
         except Exception as e:
             self.logger.error(f"Query optimization failed: {e}")
             raise AgentException(f"Query optimization failed: {str(e)}")
+        
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+            """
+            Validate input data for domain classification.
+            Args: input_data: Input data to validate
+            Returns: bool: True if input is valid
+            """
+            
+            # input_data = {
+            #     "title": title,
+            #     "description": description,
+            #     "entities": entities,
+            #     "domains": domains,
+            # }
+                        
+                        
+            if not isinstance(input_data, dict):
+                return False
+
+            # Must have at least title or description
+            title = input_data.get("title", "")
+            description = input_data.get("description", "")
+            entities = input_data.get("entities", [])
+            domains = input_data.get("domains", [])
+            
+            return bool(title.strip() or description.strip()) or bool(entities) or bool(domains)
+        
+    
+
+    def is_valid_query_string(self,q: str, min_len: int = 4, max_len: int = 300) -> bool:
+        """
+        Validates if a query string is meaningful and safe.
+        """
+        if not isinstance(q, str):
+            return False
+
+        q = q.strip()
+
+        if not (min_len <= len(q) <= max_len):
+            return False
+
+        if not re.search(r"[a-zA-Z]", q):  # must contain at least one letter
+            return False
+
+        if re.search(r"[;#{}<>]", q):  # reject dangerous special characters
+            return False
+
+        if len(q.split()) < 2:
+            return False  # optionally enforce minimum word count
+
+        return True
+
+    def safe_flatten_queries(self,queries):
+        """
+        Safely flatten and validate a list of queries that may include strings or lists of strings.
+        Returns a cleaned list of valid, unique queries.
+        """
+        flat_queries = []
+
+        for q in queries:
+            if isinstance(q, str):
+                cleaned = q.strip()
+                if self.is_valid_query_string(cleaned):
+                    flat_queries.append(cleaned)
+
+            elif isinstance(q, list):
+                for sub_q in q:
+                    if isinstance(sub_q, str):
+                        cleaned = sub_q.strip()
+                        if self.is_valid_query_string(cleaned):
+                            flat_queries.append(cleaned)
+                            break  # Only first valid string in list
+
+        # Optional: remove duplicates
+        return list(dict.fromkeys(flat_queries))
