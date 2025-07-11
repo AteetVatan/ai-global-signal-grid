@@ -56,7 +56,7 @@ class MASXOrchestrator:
                 FlashpointLLMAgent,
                 DomainClassifier,
                 QueryPlanner,
-                NewsFetcher,
+                # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
                 # LanguageResolver,
@@ -74,7 +74,7 @@ class MASXOrchestrator:
                 "flashpoint_llm_agent": FlashpointLLMAgent(),
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
-                "news_fetcher": NewsFetcher(),
+                #"news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
                 # "language_resolver": LanguageResolver(),
@@ -290,7 +290,7 @@ class MASXOrchestrator:
                 
                 print(result.data)
                 
-                # read json debug_data/flashpoint.json ateet
+                # read json debug_data/flashpoint.json
                 with open(
                     "src/app/debug_data/flashpoint.json", "r"
                 ) as f:  # check this path
@@ -383,6 +383,14 @@ class MASXOrchestrator:
             agent = self.agents.get("domain_classifier")
             if not agent:
                 raise WorkflowException("DomainClassifier agent not available")
+            
+            if self.settings.debug:                
+                #dummy agent result                
+                result = '["Geopolitical", "Military / Conflict / Strategic Alliances", "Sovereignty / Border / Legal Disputes"]'
+                state.metadata["domains"] = json.loads(result)
+                state.workflow.current_step = "domain_classification"
+                return state
+            
 
             #flashpoint = state.metadata.get("flashpoint", [])
             # Prepare input data
@@ -419,11 +427,25 @@ class MASXOrchestrator:
             agent = self.agents.get("query_planner")
             if not agent:
                 raise WorkflowException("QueryPlanner agent not available")
+            
+            # if self.settings.debug:                
+            #     #dummy agent result                
+            #     result = '["Geopolitical", "Military / Conflict / Strategic Alliances", "Sovereignty / Border / Legal Disputes"]'
+            #     state.metadata["domains"] = json.loads(result)
+            #     state.workflow.current_step = "domain_classification"
+            #     return state
+
+            title = state.metadata.get("flashpoint", {}).get("title", "")
+            description = state.metadata.get("flashpoint", {}).get("description", "")
+            entities = state.metadata.get("flashpoint", {}).get("entities", [])
+            domains = state.metadata.get("domains", [])
 
             # Prepare input data
             input_data = {
-                "domains": state.metadata.get("domains", []),
-                "context": state.metadata.get("context", {}),
+                "title": title,
+                "description": description,
+                "entities": entities,
+                "domains": domains,
             }
 
             # Run agent
