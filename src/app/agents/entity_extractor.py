@@ -7,11 +7,10 @@ This agent is responsible for:
 - Handling errors in entity extraction
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
 
 from .base import BaseAgent, AgentResult
-from ..core.state import AgentState
 from ..core.exceptions import AgentException
 from ..config.logging_config import get_agent_logger
 
@@ -31,23 +30,27 @@ class EntityExtractor(BaseAgent):
         super().__init__("EntityExtractor")
         self.logger = get_agent_logger("EntityExtractor")
 
-    async def extract_entities(self, items: List[Dict[str, Any]]) -> AgentResult:
+    def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
-        Extract entities from a list of content items.
-
+        Synchronous entrypoint to extract entities (required by BaseAgent).
+        
         Args:
-            items: List of content items to analyze
-
+            input_data: Dictionary with a list under 'items' key
+        
         Returns:
-            AgentResult: Contains extracted entities
+            AgentResult with extracted entities
         """
         try:
+            items = input_data.get("items", [])
+            if not isinstance(items, list):
+                raise AgentException("Missing or invalid 'items' list for entity extraction")
+
             self.logger.info(f"Extracting entities from {len(items)} items")
 
             extracted_results = []
 
             for item in items:
-                text = item.get("content", item.get("title", ""))
+                text = item.get("content") or item.get("title", "")
                 entities = self._extract_entities_from_text(text)
 
                 extracted_results.append(
@@ -74,7 +77,11 @@ class EntityExtractor(BaseAgent):
 
         except Exception as e:
             self.logger.error(f"Entity extraction failed: {e}")
-            raise AgentException(f"Entity extraction failed: {str(e)}")
+            return AgentResult(
+                success=False,
+                error=f"Entity extraction failed: {str(e)}",
+                metadata={"agent": self.name}
+            )
 
     def _extract_entities_from_text(self, text: str) -> List[Dict[str, Any]]:
         """Stub entity extraction from text (replace with real NER in production)."""
