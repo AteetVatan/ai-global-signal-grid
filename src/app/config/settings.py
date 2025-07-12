@@ -29,11 +29,16 @@ class Settings(BaseSettings):
     debug: bool = Field(default=True, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
 
+    #Flashpoint Configuration
+    flashpoint_max_iterations: int = Field(default=10, description="Flashpoint max iterations")
+    target_flashpoints: int = Field(default=20, description="Flashpoint target flashpoints")
+
     # HOTSPOT_QUERY
     hotspot_query: str = Field(
         default="global tension news last 24 hours", description="Hotspot query"
     )
 
+    #Flashpoint Configuration
     # LLM API Configuration
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
     openai_model: str = Field(
