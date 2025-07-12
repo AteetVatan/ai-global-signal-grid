@@ -28,6 +28,7 @@ from ..core.utils import generate_run_id, measure_execution_time
 from ..config.logging_config import get_workflow_logger, log_workflow_step
 from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
+from ..core.querystate import QueryState
 
 
 class MASXOrchestrator:
@@ -56,6 +57,7 @@ class MASXOrchestrator:
                 FlashpointLLMAgent,
                 DomainClassifier,
                 QueryPlanner,
+                EntityExtractor,
                 # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
@@ -74,6 +76,7 @@ class MASXOrchestrator:
                 "flashpoint_llm_agent": FlashpointLLMAgent(),
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
+                "entity_extractor": EntityExtractor(),
                 #"news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
@@ -158,22 +161,37 @@ class MASXOrchestrator:
         per_flashpoint = StateGraph(MASXState)
         per_flashpoint.add_node("domain_classification", self._run_domain_classifier)
         per_flashpoint.add_node("query_planning", self._run_query_planner)
+        per_flashpoint.add_node("entity_extraction", self._run_entity_extractor)
+        #---now here
+         
+         
+        
         per_flashpoint.add_node("data_fetching", self._run_data_fetchers)
         per_flashpoint.add_node("merge_deduplication", self._run_merge_deduplicator)
         per_flashpoint.add_node("language_processing", self._run_language_processing)
-        per_flashpoint.add_node("entity_extraction", self._run_entity_extractor)
+        #per_flashpoint.add_node("entity_extraction", self._run_entity_extractor)
         per_flashpoint.add_node("event_analysis", self._run_event_analyzer)
         per_flashpoint.add_node("fact_checking", self._run_fact_checker)
         per_flashpoint.add_node("validation", self._run_validator)
         per_flashpoint.add_node("memory_storage", self._run_memory_manager)
 
+
+
+
+        #edges    
+
         per_flashpoint.set_entry_point("domain_classification")
         per_flashpoint.add_edge("domain_classification", "query_planning")
-        per_flashpoint.add_edge("query_planning", "data_fetching")
+        per_flashpoint.add_edge("query_planning", "entity_extraction")
+        
+        
+        #per_flashpoint.add_edge("query_planning", "data_fetching")
         per_flashpoint.add_edge("data_fetching", "merge_deduplication")
         per_flashpoint.add_edge("merge_deduplication", "language_processing")
+        
         per_flashpoint.add_edge("language_processing", "entity_extraction")
         per_flashpoint.add_edge("entity_extraction", "event_analysis")
+        
         per_flashpoint.add_edge("event_analysis", "fact_checking")
         per_flashpoint.add_edge("fact_checking", "validation")
         per_flashpoint.add_edge("validation", "memory_storage")
@@ -338,10 +356,7 @@ class MASXOrchestrator:
 
             # Update state
             #state.agents["flashpoint_llm_agent"] = agent.state
-            if result.success:                
-                raw = result.data.get("flashpoints", [])  # List[FlashpointItem] or List[dict]
-
-                #flashpoints = FlashpointDataset.from_raw(raw)
+            if result.success:
                 
                 state.data["all_flashpoints"] = FlashpointDataset.model_validate(result.data["flashpoints"])
                 
@@ -383,26 +398,30 @@ class MASXOrchestrator:
             if not agent:
                 raise WorkflowException("DomainClassifier agent not available")
             
-            if self.settings.debug and False:                
-                #dummy agent result                
-                result = '["Geopolitical", "Military / Conflict / Strategic Alliances", "Sovereignty / Border / Legal Disputes"]'
-                state.metadata["domains"] = json.loads(result)
+            if self.settings.debug:                
+                #dummy agent result 
+                flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])             
+                domains = '["Military / Conflict / Strategic Alliances", "Economic / Trade / Sanctions", "Religious Tensions / Ideological Movements", "Sovereignty / Border / Legal Disputes", "Environmental Flashpoints / Resource Crises", "Civilizational / Ethnonationalist Narratives"]'
+                flashpoint.domains = json.loads(domains)
+                state.data["current_flashpoint"] = flashpoint.model_dump()
                 state.workflow.current_step = "domain_classification"
                 return state
             
-
-            flashpoint = state.current_flashpoint
+            #Flashpoint validation
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
             # Prepare input data
             input_data = flashpoint.model_dump()
-
             # Run agent
             result = agent.run(input_data, run_id=state.run_id)
-
+            
+            
             # Update state
             state.agents["domain_classifier"] = agent.state
-            if result.success:
-                state.metadata["domains"] = result.data.get("domains", [])
-
+            if result.success:                
+                domains = result.data.get("domains", [])                
+                flashpoint.domains = domains
+                state.data["current_flashpoint"] = flashpoint.model_dump()
+                
             state.workflow.current_step = "domain_classification"
 
             log_workflow_step(
@@ -426,25 +445,14 @@ class MASXOrchestrator:
             agent = self.agents.get("query_planner")
             if not agent:
                 raise WorkflowException("QueryPlanner agent not available")
-            
-            # if self.settings.debug:                
-            #     #dummy agent result                
-            #     result = '["Geopolitical", "Military / Conflict / Strategic Alliances", "Sovereignty / Border / Legal Disputes"]'
-            #     state.metadata["domains"] = json.loads(result)
-            #     state.workflow.current_step = "domain_classification"
-            #     return state
 
-            title = state.metadata.get("flashpoint", {}).get("title", "")
-            description = state.metadata.get("flashpoint", {}).get("description", "")
-            entities = state.metadata.get("flashpoint", {}).get("entities", [])
-            domains = state.metadata.get("domains", [])
-
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
             # Prepare input data
             input_data = {
-                "title": title,
-                "description": description,
-                "entities": entities,
-                "domains": domains,
+                "title": flashpoint.title,
+                "description": flashpoint.description,
+                "entities": flashpoint.entities,
+                "domains": flashpoint.domains ,
             }
 
             # Run agent
@@ -453,13 +461,36 @@ class MASXOrchestrator:
             # Update state
             state.agents["query_planner"] = agent.state
             if result.success:
-                state.metadata["queries"] = result.data.get("queries", [])
+                
+                result_query_states = result.data.get("query_states", [])               
+                query_states = [QueryState.model_validate(q) for q in result_query_states]
+                #query_states = QueryState.model_validate(result.data.get("query_states", []))
+                flashpoint.queries = query_states
+                state.data["current_flashpoint"] = flashpoint.model_dump()
 
             state.workflow.current_step = "query_planning"
 
         except Exception as e:
             state.errors.append(f"Query planning failed: {str(e)}")
             self.logger.error(f"Query planning error: {e}")
+
+        return state
+    
+    def _run_entity_extractor(self, state: MASXState) -> MASXState:
+        """Run entity extraction step."""
+        try:
+            agent = self.agents.get("entity_extractor")
+            if not agent:
+                raise WorkflowException("EntityExtractor agent not available")
+
+            #input_data = state.agents.get("merge_deduplicator", {}).get("output", {})
+            #result = agent.run(input_data, run_id=state.run_id)
+            state.agents["entity_extractor"] = agent.state
+            state.workflow.current_step = "entity_extraction"
+
+        except Exception as e:
+            state.errors.append(f"Entity extraction failed: {str(e)}")
+            self.logger.error(f"Entity extraction error: {e}")
 
         return state
 
@@ -565,23 +596,7 @@ class MASXOrchestrator:
 
         return state
 
-    def _run_entity_extractor(self, state: MASXState) -> MASXState:
-        """Run entity extraction step."""
-        try:
-            agent = self.agents.get("entity_extractor")
-            if not agent:
-                raise WorkflowException("EntityExtractor agent not available")
 
-            input_data = state.agents.get("merge_deduplicator", {}).get("output", {})
-            result = agent.run(input_data, run_id=state.run_id)
-            state.agents["entity_extractor"] = agent.state
-            state.workflow.current_step = "entity_extraction"
-
-        except Exception as e:
-            state.errors.append(f"Entity extraction failed: {str(e)}")
-            self.logger.error(f"Entity extraction error: {e}")
-
-        return state
 
     def _run_event_analyzer(self, state: MASXState) -> MASXState:
         """Run event analysis step."""
