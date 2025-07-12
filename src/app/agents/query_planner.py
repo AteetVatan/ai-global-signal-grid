@@ -18,6 +18,7 @@ from ..core.state import AgentState
 from ..core.exceptions import AgentException
 from ..config.logging_config import get_agent_logger
 import re
+from ..core.querystate import QueryState, QueryTranslated
 
 class QueryPlanner(BaseAgent):
     """
@@ -94,9 +95,22 @@ class QueryPlanner(BaseAgent):
             
             #queries validation
             queries = self.safe_flatten_queries(queries)
+            
+            query_states = []
+            for query in queries:
+                query_state = QueryState(
+                    query=query,
+                    list_query_translated=[QueryTranslated(language="en", query_translated=query)],
+                    entities=[],
+                    language=["en"],
+                    country_language={},
+                    rss_urls=[],
+                    feed_entries=[])
+                query_states.append(query_state) 
+            
 
             result = {
-                "queries": queries,
+                "query_states": query_states,
                 #"gdelt_queries": gdelt_queries,
                 "domains": input_data.get("domains", []),
                 "query_count": len(queries) #+ len(gdelt_queries),

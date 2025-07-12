@@ -1,11 +1,14 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, RootModel
+from ..core.querystate import QueryState
 #from pydantic_core import RootModel
 
 class FlashpointItem(BaseModel):
     title: str = Field(..., min_length=1, description="Title of the flashpoint event")
     description: str = Field(..., min_length=1, description="Brief description of the event")
     entities: List[str] = Field(..., description="List of named entities involved")
+    domains: Optional[List[str]] = Field(None, description="List of domains the event belongs to")
+    queries: Optional[List[QueryState]] = Field(None, description="List of queries")
 
     @field_validator("title", "description", mode="before")
     @classmethod
@@ -19,6 +22,15 @@ class FlashpointItem(BaseModel):
         if not value or not isinstance(value, list) or any(not isinstance(e, str) for e in value):
             raise ValueError("Entities must be a list of non-empty strings")
         return value
+    
+    @field_validator("domains", mode="before")
+    @classmethod
+    def validate_domains(cls, value):
+        if value is None:
+            return value  #Skip validation
+        if not isinstance(value, list) or any(not isinstance(d, str) or not d.strip() for d in value):
+            raise ValueError("Domains must be a list of non-empty strings")
+        return [d.strip() for d in value]
 
 
 
