@@ -194,10 +194,18 @@ class MASXOrchestrator:
         # each flashpoint to parallel processing
         def fan_out_flashpoints(state: MASXState):
             
+       
+            #ateet 
+            all_flashpoints = deepcopy(state.all_flashpoints)
             
-            #ateet
+            #create a list of states (MASXState) for each flashpoint
+            state_list = []
+            for flashpoint in all_flashpoints:
+                new_state = deepcopy(state)
+                new_state.sub_run_id = "sub_" + generate_run_id()
+                new_state.current_flashpoint = flashpoint
+                state_list.append(new_state)
             
-            state_list =  state.metadata.get("flashpoints_states", [])            
             
             return [Send("process_one_fp", state) for state in state_list]
    
@@ -286,43 +294,38 @@ class MASXOrchestrator:
             if self.settings.debug:
                 
                 #dummy agent result
-                result = AgentResult(success=True, data={"flashpoints": []})
-                
+                result = AgentResult(success=True, data={"flashpoints": []})            
                 print(result.data)
-                
+            
                 # read json debug_data/flashpoint.json
                 with open(
                     "src/app/debug_data/flashpoint.json", "r"
                 ) as f:  # check this path
                     result.data["flashpoints"] = json.load(f)
-                
+            
+                flashpoints = []
+                for fp in result.data["flashpoints"]:
+                    flashpoints.append(FlashpointItem(**fp))
+                    
+                #flashpoints = FlashpointDataset.from_raw(flashpoints)
+                    
                 #data validation
-                flashpoints: FlashpointDataset = FlashpointDataset.model_validate(result.data["flashpoints"])
+              
+                state.all_flashpoints = FlashpointDataset.model_validate(flashpoints)
                 
-                #create multiple MASXState objecs for fanout phase
-                state_list = []
-                for fp in flashpoints:
-                    new_state = deepcopy(state)
-                    new_state.metadata["flashpoint"] = fp.model_dump()
-                    new_state.metadata["flashpoint_stats"] = {
-                        "total_count": len(result.data.get("flashpoints", [])),
-                        "iterations": result.data.get("iterations", 0),
-                        "search_runs": result.data.get("search_runs", 0),
-                        "llm_runs": result.data.get("llm_runs", 0),
-                        "token_usage": result.data.get("token_usage", {}),
-                    }
-                    state_list.append(new_state)
-                                                    
-                if flashpoints:                     
-                    state.metadata["flashpoints_states"] = state_list  
-                    state.metadata["flashpoint_stats"] = {
-                        "total_count": len(result.data.get("flashpoints", [])),
-                        "iterations": result.data.get("iterations", 0),
-                        "search_runs": result.data.get("search_runs", 0),
-                        "llm_runs": result.data.get("llm_runs", 0),
-                        "token_usage": result.data.get("token_usage", {}),
-                    }              
+                
+                state.metadata["flashpoint_stats"] = {
+                    "total_count": len(result.data.get("flashpoints", [])),
+                    "iterations": result.data.get("iterations", 0),
+                    "search_runs": result.data.get("search_runs", 0),
+                    "llm_runs": result.data.get("llm_runs", 0),
+                    "token_usage": result.data.get("token_usage", {}),
+                }
+                
                 return state
+
+            state.workflow.current_step = "flashpoint_detection"
+            
 
             agent = self.agents.get("flashpoint_llm_agent")
             if not agent:
@@ -330,22 +333,23 @@ class MASXOrchestrator:
 
             # Prepare input data for flashpoint detection
             input_data = {
-                "max_iterations": 10,
-                "target_flashpoints": 20,
-                "max_context_length": 15000,
-                "context": state.metadata.get("context", {}),
+                "max_iterations": self.settings.flashpoint_max_iterations,
+                "target_flashpoints": self.settings.target_flashpoints
             }
 
             # Run flashpoint detection
             result = agent.run(input_data, run_id=state.run_id)
 
             # Update state
-            state.agents["flashpoint_llm_agent"] = agent.state
-            if result.success:
+            #state.agents["flashpoint_llm_agent"] = agent.state
+            if result.success:                
+                raw = result.data.get("flashpoints", [])  # List[FlashpointItem] or List[dict]
+
+                #flashpoints = FlashpointDataset.from_raw(raw)
+
+                state.all_flashpoints = FlashpointDataset.model_validate(raw)
                 
-                state.flashpoints = result.data.get("flashpoints", []) #This makes it map-compatible
                 
-                state.metadata["flashpoints"] = result.data.get("flashpoints", [])  
                 state.metadata["flashpoint_stats"] = {
                     "total_count": len(result.data.get("flashpoints", [])),
                     "iterations": result.data.get("iterations", 0),
@@ -384,7 +388,7 @@ class MASXOrchestrator:
             if not agent:
                 raise WorkflowException("DomainClassifier agent not available")
             
-            if self.settings.debug:                
+            if self.settings.debug and False:                
                 #dummy agent result                
                 result = '["Geopolitical", "Military / Conflict / Strategic Alliances", "Sovereignty / Border / Legal Disputes"]'
                 state.metadata["domains"] = json.loads(result)
@@ -392,9 +396,9 @@ class MASXOrchestrator:
                 return state
             
 
-            #flashpoint = state.metadata.get("flashpoint", [])
+            flashpoint = state.current_flashpoint
             # Prepare input data
-            input_data = state.metadata.get("flashpoint", [])
+            input_data = flashpoint.model_dump()
 
             # Run agent
             result = agent.run(input_data, run_id=state.run_id)
