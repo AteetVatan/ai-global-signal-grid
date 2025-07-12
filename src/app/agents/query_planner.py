@@ -159,10 +159,7 @@ class QueryPlanner(BaseAgent):
             for item in parsed:
                 query_text = item.get("query")
                 if query_text:
-                    queries.append({
-                        "query": query_text,
-                        "source": "google_news",
-                    })
+                    queries.append( query_text)
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
@@ -361,6 +358,7 @@ class QueryPlanner(BaseAgent):
         flat_queries = []
 
         for q in queries:
+            
             if isinstance(q, str):
                 cleaned = q.strip()
                 if self.is_valid_query_string(cleaned):
