@@ -196,14 +196,15 @@ class MASXOrchestrator:
             
        
             #ateet 
-            all_flashpoints = deepcopy(state.all_flashpoints)
+            flashpointdataset = state.data["all_flashpoints"]
+            all_flashpoints = deepcopy(flashpointdataset)
             
             #create a list of states (MASXState) for each flashpoint
             state_list = []
             for flashpoint in all_flashpoints:
                 new_state = deepcopy(state)
                 new_state.sub_run_id = "sub_" + generate_run_id()
-                new_state.current_flashpoint = flashpoint
+                new_state.data["current_flashpoint"] = flashpoint
                 state_list.append(new_state)
             
             
@@ -302,16 +303,11 @@ class MASXOrchestrator:
                     "src/app/debug_data/flashpoint.json", "r"
                 ) as f:  # check this path
                     result.data["flashpoints"] = json.load(f)
-            
-                flashpoints = []
-                for fp in result.data["flashpoints"]:
-                    flashpoints.append(FlashpointItem(**fp))
-                    
-                #flashpoints = FlashpointDataset.from_raw(flashpoints)
-                    
-                #data validation
-              
-                state.all_flashpoints = FlashpointDataset.model_validate(flashpoints)
+      
+                if isinstance(result.data["flashpoints"][0], FlashpointItem):
+                    result.data["flashpoints"] = [fp.model_dump() for fp in result.data["flashpoints"]]
+                #data validation                
+                state.data["all_flashpoints"] = FlashpointDataset.model_validate(result.data["flashpoints"])
                 
                 
                 state.metadata["flashpoint_stats"] = {
@@ -346,9 +342,8 @@ class MASXOrchestrator:
                 raw = result.data.get("flashpoints", [])  # List[FlashpointItem] or List[dict]
 
                 #flashpoints = FlashpointDataset.from_raw(raw)
-
-                state.all_flashpoints = FlashpointDataset.model_validate(raw)
                 
+                state.data["all_flashpoints"] = FlashpointDataset.model_validate(result.data["flashpoints"])
                 
                 state.metadata["flashpoint_stats"] = {
                     "total_count": len(result.data.get("flashpoints", [])),
@@ -772,6 +767,7 @@ class MASXOrchestrator:
                     run_id=generate_run_id(),
                     workflow=WorkflowState(),
                     metadata=input_data or {},
+                    data={}
                 )
 
                 # Run workflow

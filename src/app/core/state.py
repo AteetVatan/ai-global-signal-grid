@@ -82,9 +82,6 @@ class MASXState(BaseModel):
         default_factory=dict, description="Additional run metadata (config, env, etc.)"
     )    
     #put current_flashpoint and all_flashpoints in data
-    current_flashpoint: Optional[FlashpointItem] = Field(
-        default=None, description="Current flashpoint"
-    )
-    all_flashpoints: Optional[FlashpointDataset] = Field(
-        default=None, description="All flashpoints"
+    data: Dict[str, Any] = Field(
+        default_factory=dict, description="Data for the workflow" # current_flashpoint and all_flashpoints
     )
