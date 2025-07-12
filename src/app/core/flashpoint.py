@@ -24,9 +24,35 @@ class FlashpointItem(BaseModel):
 
 
 class FlashpointDataset(RootModel[List[FlashpointItem]]):
+    root: List[FlashpointItem] = Field(default_factory=list) # to avoid FlashpointDataset(root=[])
+    
+    @classmethod
+    def from_raw(cls, raw):
+        if not raw:
+            return cls()
+        #Fix: Ensure we're working with list of dicts
+        if isinstance(raw[0], FlashpointItem):
+            raw = [fp.model_dump() for fp in raw]
+        return cls.model_validate(raw)
+    
     def __iter__(self):
         return iter(self.root)
 
-    def __len__(self):
+    def __len__(self):  
         return len(self.root)
     
+    def to_list(self) -> List[dict]:
+        return [item.model_dump() for item in self.root]
+
+    def to_json(self) -> str:
+        import json
+        return json.dumps(self.to_list(), ensure_ascii=False, indent=2)    
+    
+    def append(self, item: FlashpointItem):
+        if not isinstance(item, FlashpointItem):
+            raise TypeError("Only FlashpointItem instances can be added.")
+        self.root.append(item)
+
+    def extend(self, items: List[FlashpointItem]):
+        for item in items:
+            self.append(item)

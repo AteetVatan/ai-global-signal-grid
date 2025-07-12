@@ -25,10 +25,8 @@ from ..services.flashpoint_detection import FlashpointDetectionService, Flashpoi
 from ..services.token_tracker import get_token_tracker
 from ..config.logging_config import get_logger
 from ..config.settings import get_settings
+from ..core.flashpoint import FlashpointDataset, FlashpointItem
 
-
-class FlashpointList(RootModel[List[Flashpoint]]):
-    """Pydantic model for validating flashpoint lists."""
 
 
 class FlashpointLLMAgent(BaseAgent):
@@ -158,7 +156,7 @@ class FlashpointLLMAgent(BaseAgent):
         Returns:
             Dict containing flashpoints and statistics
         """
-        accumulated_flashpoints = []
+        accumulated_flashpoints = FlashpointDataset()
         iterations = 0
 
         while (
@@ -186,7 +184,7 @@ class FlashpointLLMAgent(BaseAgent):
                 break
 
             try:
-                new_flashpoints = self._generate_flashpoints(context)
+                new_flashpoints: FlashpointDataset = self._generate_flashpoints(context)
             except Exception as e:
                 self.logger.error(
                     f"LLM generation failed in iteration {iterations}: {e}"
@@ -326,7 +324,7 @@ class FlashpointLLMAgent(BaseAgent):
             self.logger.error("Context fetching failed", error=str(e))
             return ""
 
-    def _generate_flashpoints(self, context: str) -> List[Flashpoint]:
+    def _generate_flashpoints(self, context: str) -> FlashpointDataset:
         """
         Generate flashpoints using LLM reasoning.
 
@@ -334,7 +332,7 @@ class FlashpointLLMAgent(BaseAgent):
             context: News context to analyze
 
         Returns:
-            List of generated flashpoints
+            FlashpointDataset of generated flashpoints
         """
         self.entity_tracker.llm_run += 1
 
@@ -370,7 +368,7 @@ class FlashpointLLMAgent(BaseAgent):
             )
 
             # Validate JSON response
-            validated_flashpoints = self._validate_json_response(response)
+            validated_flashpoints : FlashpointDataset = self._validate_json_response(response)
 
             if validated_flashpoints:
                 self.logger.info(
@@ -380,15 +378,15 @@ class FlashpointLLMAgent(BaseAgent):
                 return validated_flashpoints
             else:
                 self.logger.warning(
-                    "Invalid JSON response from LLM", response_preview=response[:200]
+                    "Invalid JSON response from  LLM", response_preview=response[:200]
                 )
-                return []
+                return FlashpointDataset()
 
         except Exception as e:
             self.logger.error("Flashpoint generation failed", error=str(e))
-            return []
+            return None
 
-    def _validate_json_response(self, response: str) -> Optional[List[Flashpoint]]:
+    def _validate_json_response(self, response: str) -> FlashpointDataset:
         """
         Validate and parse JSON response from LLM.
 
@@ -396,7 +394,7 @@ class FlashpointLLMAgent(BaseAgent):
             response: Raw LLM response
 
         Returns:
-            List of validated flashpoints or None if invalid
+            FlashpointDataset of validated flashpoints or None if invalid
         """
         try:
             # Clean response (remove markdown code blocks if present)
@@ -410,8 +408,8 @@ class FlashpointLLMAgent(BaseAgent):
             data = json.loads(cleaned_response.strip())
 
             # Validate with Pydantic
-            flashpoint_list = FlashpointList.model_validate(data)
-            return flashpoint_list.root
+            flashpoint_list = FlashpointDataset.model_validate(data)
+            return flashpoint_list
 
         except (json.JSONDecodeError, ValidationError) as e:
             self.logger.warning(
@@ -421,9 +419,9 @@ class FlashpointLLMAgent(BaseAgent):
 
     def _process_flashpoints(
         self,
-        new_flashpoints: List[Flashpoint],
-        accumulated_flashpoints: List[Flashpoint],
-    ) -> List[Flashpoint]:
+        new_flashpoints: FlashpointDataset,
+        accumulated_flashpoints: FlashpointDataset,
+    ) -> FlashpointDataset:
         """
         Process and deduplicate flashpoints.
 
@@ -434,7 +432,7 @@ class FlashpointLLMAgent(BaseAgent):
         Returns:
             List of processed flashpoints
         """
-        processed = []
+        processed = FlashpointDataset()
 
         existing_flashpoints = deepcopy(accumulated_flashpoints)
 
@@ -468,9 +466,9 @@ class FlashpointLLMAgent(BaseAgent):
                 existing_flashpoints.append(flashpoint)
 
             # remove all flashpoints with no geo entities
-            existing_flashpoints = [
-                fp for fp in existing_flashpoints if self.get_geo_entities(fp.entities)
-            ]
+            existing_flashpoints = FlashpointDataset(
+                [fp for fp in existing_flashpoints if self.get_geo_entities(fp.entities)]
+            )
 
         processed = existing_flashpoints
 
