@@ -11,8 +11,9 @@ These models are used throughout the orchestrator, agents, and logging/auditing 
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+from app.core.flashpoint import FlashpointDataset, FlashpointItem
 
-
+    
 class AgentState(BaseModel):
     """
     State for an agent in the workflow.
@@ -66,6 +67,7 @@ class MASXState(BaseModel):
     """
 
     run_id: str = Field(..., description="Unique identifier for this workflow run")
+    sub_run_id: Optional[str] = Field(default=None, description="Unique identifier for this sub-workflow run")
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Run start timestamp (UTC)"
     )
@@ -78,4 +80,11 @@ class MASXState(BaseModel):
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional run metadata (config, env, etc.)"
+    )    
+    #put current_flashpoint and all_flashpoints in data
+    current_flashpoint: Optional[FlashpointItem] = Field(
+        default=None, description="Current flashpoint"
+    )
+    all_flashpoints: Optional[FlashpointDataset] = Field(
+        default=None, description="All flashpoints"
     )
