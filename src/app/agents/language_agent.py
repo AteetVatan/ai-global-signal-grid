@@ -18,6 +18,7 @@ from ..core.enums.spacy_model_name import SpaCyModelName
 from ..core.querystate import QueryState
 from ..core.country_normalizer import CountryNormalizer
 from ..services import LanguageService
+from ..constants import GOOGLE_TRANSLATE_VARIANTS
 
 
 class LanguageAgent(BaseAgent):
@@ -114,7 +115,18 @@ class LanguageAgent(BaseAgent):
 
     
         #remove duplicates use dict key to remove duplicates
-        language_list = list(dict.fromkeys(language_list))        
+        language_list = list(dict.fromkeys(language_list))  
+        
+        #replace if keys in GOOGLE_TRANSLATE_VARIANTS with values
+        #append GOOGLE_TRANSLATE_VARIANTS[lang] to language_list if lang in GOOGLE_TRANSLATE_VARIANTS
+        google_variants = []
+        for lang in language_list:
+            if lang in GOOGLE_TRANSLATE_VARIANTS:
+                google_variants.extend(GOOGLE_TRANSLATE_VARIANTS[lang])
+        language_list.extend(google_variants)
+        language_list = list(dict.fromkeys(language_list))
+        
+              
         #sort the languages
         language_list.sort()        
         #return the languages

@@ -58,6 +58,7 @@ class MASXOrchestrator:
                 DomainClassifier,
                 QueryPlanner,
                 LanguageAgent,
+                Translator,
                 # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
@@ -77,6 +78,7 @@ class MASXOrchestrator:
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
                 "language_agent": LanguageAgent(),
+                "translation_agent": Translator(),
                 #"news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
@@ -162,6 +164,7 @@ class MASXOrchestrator:
         per_flashpoint.add_node("domain_classification", self._run_domain_classifier)
         per_flashpoint.add_node("query_planning", self._run_query_planner)
         per_flashpoint.add_node("language_agent", self._run_language_agent)
+        per_flashpoint.add_node("translation_agent", self._run_translation_agent)
         #---now here
          
          
@@ -183,6 +186,8 @@ class MASXOrchestrator:
         per_flashpoint.set_entry_point("domain_classification")
         per_flashpoint.add_edge("domain_classification", "query_planning")
         per_flashpoint.add_edge("query_planning", "language_agent")
+        per_flashpoint.add_edge("language_agent", "translation_agent")
+        
         
         
         #per_flashpoint.add_edge("query_planning", "data_fetching")
@@ -502,6 +507,36 @@ class MASXOrchestrator:
         except Exception as e:
             state.errors.append(f"LanguageAgent failed: {str(e)}")
             self.logger.error(f"LanguageAgent error: {e}")
+
+        return state
+    
+    
+    def _run_translation_agent(self, state: MASXState) -> MASXState:
+        """Run entity extraction step."""
+        try:
+            agent = self.agents.get("translation_agent")
+            if not agent:
+                raise WorkflowException("TranslationAgent agent not available")
+
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+            input_data = {
+                "queries": flashpoint.queries,
+            }
+            # Run agent
+            result = agent.run(input_data, run_id=state.run_id)
+            
+            if result.success:
+                queries = result.data.get("queries", [])
+                query_states = [QueryState.model_validate(q) for q in queries]
+                #update the queries in the flashpoint
+                flashpoint.queries = query_states
+                state.data["current_flashpoint"] = flashpoint.model_dump() 
+            state.workflow.current_step = "translation_agent"
+                
+           
+        except Exception as e:
+            state.errors.append(f"TranslationAgent failed: {str(e)}")
+            self.logger.error(f"TranslationAgent error: {e}")
 
         return state
     

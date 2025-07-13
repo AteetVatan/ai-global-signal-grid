@@ -32,7 +32,8 @@ from ..core.exceptions import TranslationException, ConfigurationException
 from ..core.utils import measure_execution_time
 from ..config.settings import get_settings
 from ..config.logging_config import get_service_logger
-
+from ..core.singleton import NLLBTranslatorSingleton
+from ..constants import ISO_TO_NLLB_MERGED
 
 class TranslationProvider(Enum):
     """Supported translation providers."""
@@ -40,7 +41,7 @@ class TranslationProvider(Enum):
     GOOGLE = "google"
     DEEPL = "deepl"
     LOCAL = "local"
-
+    NLLB = "nllb"
 
 @dataclass
 class TranslationRequest:
@@ -92,44 +93,42 @@ class TranslationService:
         self.translator = GoogleTranslator(
             source=self.source_lang, target=self.target_lang
         )
+        self.nllb_translator = NLLBTranslatorSingleton()
 
     def translate(
-        self, text: str, source_lang: str = None, target_lang: str = None
+        self,
+        text: str,
+        source_lang: Optional[str] = None,
+        target_lang: Optional[str] = None
     ) -> str:
         """
-        Translate text from source_lang to target_lang using deep-translator.
-        If source_lang or target_lang is not provided, use defaults.
+        Translate text from source_lang to target_lang using NLLB if available,
+        otherwise fall back to GoogleTranslator from deep-translator.
+
+        Args:
+            text (str): The input text to translate
+            source_lang (str): ISO 639-1 source language code (e.g. 'en')
+            target_lang (str): ISO 639-1 target language code (e.g. 'ar')
+
+        Returns:
+            str: Translated text
         """
         src = source_lang or self.source_lang
         tgt = target_lang or self.target_lang
-        # deep-translator requires a new instance for different languages
-        translator = GoogleTranslator(source=src, target=tgt)
-        return translator.translate(text)
 
-    async def detect_language(self, text: str) -> LanguageDetectionResult:
-        """
-        Detect the language of the given text.
+        try:
+            # NLLB Path
+            if src in ISO_TO_NLLB_MERGED and tgt in ISO_TO_NLLB_MERGED:
+                src_nllb = ISO_TO_NLLB_MERGED[src]
+                tgt_nllb = ISO_TO_NLLB_MERGED[tgt]
+                return self.nllb_translator.translate(text, src_nllb, tgt_nllb)
 
-        Args:
-            text: Text to detect language for
+            # Google Fallback
+            return GoogleTranslator(source=src, target=tgt).translate(text)
 
-        Returns:
-            LanguageDetectionResult: Language detection result
-        """
-        with measure_execution_time("detect_language"):
-            try:
-                # Use langdetect for language detection
-                loop = asyncio.get_event_loop()
-                detected_lang = await loop.run_in_executor(None, detect, text)
-
-                result = LanguageDetectionResult(text=text, detected_lang=detected_lang)
-
-                self.logger.debug(f"Language detected: {detected_lang}")
-                return result
-
-            except Exception as e:
-                self.logger.error(f"Language detection failed: {e}")
-                raise TranslationException(f"Language detection failed: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Translation failed: {e}", exc_info=True)
+            return f"[TranslationError] Could not translate text from '{src}' to '{tgt}'"
 
     async def translate_batch(
         self,
@@ -205,6 +204,7 @@ class TranslationService:
             TranslationProvider.GOOGLE: 10,  # 10 requests per second
             TranslationProvider.DEEPL: 5,  # 5 requests per second
             TranslationProvider.LOCAL: 100,  # 100 requests per second
+            TranslationProvider.NLLB: 10,  # 10 requests per second
         }
 
         min_interval = 1.0 / rate_limits.get(provider, 10)

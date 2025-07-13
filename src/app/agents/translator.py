@@ -15,6 +15,7 @@ from .base import BaseAgent, AgentResult
 from ..services.translation import TranslationService
 from ..core.state import AgentState
 from ..core.exceptions import AgentException
+from ..core.querystate import QueryState, QueryTranslated
 from ..config.logging_config import get_agent_logger
 
 
@@ -34,91 +35,71 @@ class Translator(BaseAgent):
         super().__init__("Translator")
         self.translation_service = TranslationService()
         self.logger = get_agent_logger("Translator")
-
-    async def translate_content(
-        self, items: List[Dict[str, Any]], target_language: str = "en"
-    ) -> AgentResult:
+        
+    def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
-        Translate content items to target language.
+        Execute method required by BaseAgent. Routes translation request.
 
         Args:
-            items: List of items to translate
-            target_language: Target language for translation
+            input_data: Dictionary with 'items' (list of dicts), 'target_language'
 
         Returns:
-            AgentResult: Contains translated content
+            AgentResult: Translation result
         """
-        try:
-            self.logger.info(f"Translating {len(items)} items to {target_language}")
-
+        try:    
+            input_queries = input_data.get("queries", [])
+            queries: List[QueryState] = [QueryState.model_validate(q) for q in input_queries]
+            
             translated_items = []
             failed_translations = []
-
-            for item in items:
-                try:
-                    source_language = item.get("source_language", "auto")
-                    content = item.get("content", item.get("title", ""))
-
-                    if not content:
-                        continue
-
-                    # Translate the content
-                    translated_text = self.translation_service.translate(
-                        text=content,
-                        source_lang=source_language,
-                        target_lang=target_language,
-                    )
-
-                    translated_item = {
-                        **item,
-                        "translated_content": translated_text,
-                        "translation_status": "success",
-                        "target_language": target_language,
-                    }
-                    translated_items.append(translated_item)
-
-                except Exception as e:
-                    self.logger.warning(f"Translation failed for item: {e}")
-                    failed_item = {
-                        **item,
-                        "translation_status": "failed",
-                        "error": str(e),
-                    }
-                    failed_translations.append(failed_item)
+            for query in queries:                                
+                for lang in query.language:  
+                    try:
+                        if lang == "en" or lang == "uk":
+                            translated_text = query.query
+                        else:
+                            translated_text = self.translation_service.translate(target_lang=lang, source_lang="en",text=query.query)
+                            translated_items.append(translated_text)      
+                            query_translated = QueryTranslated(language=lang, query_translated=translated_text)
+                            query.list_query_translated.append(query_translated)
+                        
+                            
+                    except Exception as e:
+                        self.logger.warning(f"Translation failed for item: {e}")
+                        failed_item = {
+                            "query": query.model_dump(),
+                            "target_lang": lang,
+                            "translation_status": "failed",
+                            "error": str(e),
+                        }
+                        failed_translations.append(failed_item)
+                    
 
             result = {
-                "translated_items": translated_items,
+                "queries": queries,
                 "failed_translations": failed_translations,
                 "translation_stats": {
-                    "total": len(items),
+                    "total": len(queries),
                     "successful": len(translated_items),
                     "failed": len(failed_translations),
                 },
-                "target_language": target_language,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.utcnow().isoformat()
             }
-
-            self.logger.info(
-                "Translation completed",
-                successful=len(translated_items),
-                failed=len(failed_translations),
-            )
-
+        
             return AgentResult(
                 success=True,
                 data=result,
                 metadata={
                     "agent": self.name,
-                    "timestamp": datetime.utcnow(),
-                    "target_language": target_language,
+                    "timestamp": datetime.utcnow()
                 },
             )
-
         except Exception as e:
             self.logger.error(f"Translation failed: {e}")
             raise AgentException(f"Translation failed: {str(e)}")
 
-    async def batch_translate(
+
+    def batch_translate(
         self,
         texts: List[str],
         source_language: str = "auto",
@@ -174,7 +155,7 @@ class Translator(BaseAgent):
             self.logger.error(f"Batch translation failed: {e}")
             raise AgentException(f"Batch translation failed: {str(e)}")
 
-    async def validate_translation(
+    def validate_translation(
         self,
         original_text: str,
         translated_text: str,
@@ -231,7 +212,7 @@ class Translator(BaseAgent):
             self.logger.error(f"Translation validation failed: {e}")
             raise AgentException(f"Translation validation failed: {str(e)}")
 
-    async def get_supported_languages(self) -> AgentResult:
+    def get_supported_languages(self) -> AgentResult:
         """
         Get list of supported languages.
 
@@ -273,7 +254,7 @@ class Translator(BaseAgent):
             self.logger.error(f"Failed to get supported languages: {e}")
             raise AgentException(f"Failed to get supported languages: {str(e)}")
 
-    async def detect_language(self, text: str) -> AgentResult:
+    def detect_language(self, text: str) -> AgentResult:
         """
         Detect the language of text.
 
