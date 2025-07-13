@@ -32,14 +32,9 @@ class CountryNormalizer:
                 pass
 
         # Step 2: Coco conversion
-        converted = self.cc.convert(cleaned, to="name_short", not_found=None)
-        if (
-            converted
-            and isinstance(converted, str)
-            and converted.lower() != "not found"
-        ):
-            if converted.lower() in self.valid_names:
-                return converted
+        coco_converted = self.get_coco_country_name(cleaned)
+        if coco_converted:
+            return coco_converted
 
         # Step 3: Fuzzy match
         try:
@@ -58,7 +53,46 @@ class CountryNormalizer:
             except LookupError:
                 pass
 
+        
+        #step 5: try to find the country in the pycountry
+
         return None
+    
+    def country_name_to_alpha2(self, country_name: str) -> str:
+        """
+        Convert a country name to its ISO 3166-1 alpha-2 code.
+
+        Args:
+            name (str): Country name (e.g., 'India', 'United States')
+
+        Returns:
+            str: Alpha-2 code (e.g., 'IN', 'US') or empty string if not found.
+        """
+        try:
+            country = pycountry.countries.get(name=country_name)
+            if country:
+                return country.alpha_2
+            # Fallback: fuzzy search
+            matches = pycountry.countries.search_fuzzy(country_name)
+            return matches[0].alpha_2 if matches else None
+        except LookupError:
+            return ""
+    
+    def get_coco_country_name(self, name: str, return_all: bool = False) -> Optional[str]:
+        """Get the country name from the coco converter."""
+        coco_converted = self.cc.convert(name, to="name_short", not_found=None)
+        if (
+            coco_converted
+            and isinstance(coco_converted, str)
+            and coco_converted.lower() != "not found"
+        ):
+            if return_all:
+                return coco_converted
+            elif coco_converted.lower() in self.valid_names:
+                return coco_converted            
+          
+        return None
+    
 
     def is_country(self, name: str) -> bool:
         """Return True if the name can be normalized to a known country."""
