@@ -16,7 +16,7 @@ from .event_fetcher import EventFetcher
 from .merge_deduplicator import MergeDeduplicator
 from .language_resolver import LanguageResolver
 from .translator import Translator
-from .entity_extractor import EntityExtractor
+from .language_agent import LanguageAgent
 from .event_analyzer import EventAnalyzer
 from .fact_checker import FactChecker
 from .validator import Validator
@@ -34,7 +34,7 @@ __all__ = [
     "MergeDeduplicator",
     "LanguageResolver",
     "Translator",
-    "EntityExtractor",
+    "LanguageAgent",
     "EventAnalyzer",
     "FactChecker",
     "Validator",
