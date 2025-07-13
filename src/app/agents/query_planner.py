@@ -18,6 +18,9 @@ from ..core.state import AgentState
 from ..core.exceptions import AgentException
 from ..config.logging_config import get_agent_logger
 import re
+import json
+import re
+from typing import Any, List, Dict
 from ..core.querystate import QueryState, QueryTranslated
 
 class QueryPlanner(BaseAgent):
@@ -94,14 +97,18 @@ class QueryPlanner(BaseAgent):
             #self._check_query_history(news_queries + gdelt_queries)
             
             #queries validation
-            queries = self.safe_flatten_queries(queries)
+            #queries = self.safe_flatten_queries(queries)            
+            
             
             query_states = []
             for query in queries:
+                entities = query.get("entities", [])
+                query_text = query.get("query", "")
+                
                 query_state = QueryState(
-                    query=query,
-                    list_query_translated=[QueryTranslated(language="en", query_translated=query)],
-                    entities=[],
+                    query=query_text,
+                    list_query_translated=[QueryTranslated(language="en", query_translated=query_text)],
+                    entities=entities,
                     language=["en"],
                     country_language={},
                     rss_urls=[],
@@ -161,19 +168,17 @@ class QueryPlanner(BaseAgent):
         Focus on current events, breaking news, and trending topics in this domain.        
         Return as JSON array with objects containing:
         - query: The search query string
+        - entities: List of involved countries from the query example: ["Iran", "Israel"].
         """
-
+        # - language: List of ISO 639-1 language codes associated with those countries example: ["fa", "he"].
         response = self.llm_service.generate_text(prompt)
 
         # Parse response and format queries
         queries = []
         try:
             # Simple parsing - in production, use proper JSON parsing
-            parsed = json.loads(response)
-            for item in parsed:
-                query_text = item.get("query")
-                if query_text:
-                    queries.append( query_text)
+            parsed = json.loads(response)            
+            queries = self.validate_and_fix_query_response(parsed)
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
             # Fallback to basic queries
@@ -363,23 +368,86 @@ class QueryPlanner(BaseAgent):
             return False  # optionally enforce minimum word count
 
         return True
+    
+
+
+    def validate_and_fix_query_response(self, parsed: Any) -> List[Dict[str, Any]]:
+        """
+        Validate and fix a parsed query-entity list.
+        
+        Args:
+            parsed: A Python list of dicts (not a raw JSON string)
+
+        Returns:
+            List of cleaned {"query": str, "entities": List[str]} dicts
+        """
+        if not isinstance(parsed, list):
+            self.logger.warning("Expected a list of query dicts")
+            return []
+
+        cleaned = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+
+            # Ensure 'query'
+            query_str = str(item.get("query", "")).strip()
+            if not query_str:
+                continue  # skip empty or missing query
+
+            # Ensure 'entities'
+            raw_entities = item.get("entities", [])
+            if not isinstance(raw_entities, list):
+                raw_entities = []
+
+            # Clean each entity string
+            entities = [str(e).strip() for e in raw_entities if isinstance(e, str) and e.strip()]
+
+            cleaned.append({
+                "query": query_str,
+                "entities": entities
+            })
+
+        return cleaned
+
+
+        
+        
+        
+        
+        
+        
 
     def safe_flatten_queries(self,queries):
         """
         Safely flatten and validate a list of queries that may include strings or lists of strings.
         Returns a cleaned list of valid, unique queries.
+        
+        queries = [
+            {
+                "query": "Iran drone strikes near Israel border",
+                "entities": ["Iran", "Israel"]
+            },
+            {
+                "query": "UN sanctions on Russia for Ukraine war",
+                "entities": ["Russia", "Ukraine"]
+            }
+            ]
+        
         """
         flat_queries = []
 
         for q in queries:
+            entities = q.get("entities", [])
+            query = q.get("query", "")
             
-            if isinstance(q, str):
-                cleaned = q.strip()
+            if isinstance(query, str):
+                cleaned = query.strip()
                 if self.is_valid_query_string(cleaned):
-                    flat_queries.append(cleaned)
+                    flat_queries.append(cleaned, entities)
 
-            elif isinstance(q, list):
-                for sub_q in q:
+            elif isinstance(query, list):
+                for sub_q in query:
                     if isinstance(sub_q, str):
                         cleaned = sub_q.strip()
                         if self.is_valid_query_string(cleaned):
