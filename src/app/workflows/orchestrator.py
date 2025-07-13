@@ -57,7 +57,7 @@ class MASXOrchestrator:
                 FlashpointLLMAgent,
                 DomainClassifier,
                 QueryPlanner,
-                EntityExtractor,
+                LanguageAgent,
                 # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
@@ -76,7 +76,7 @@ class MASXOrchestrator:
                 "flashpoint_llm_agent": FlashpointLLMAgent(),
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
-                "entity_extractor": EntityExtractor(),
+                "language_agent": LanguageAgent(),
                 #"news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
@@ -161,7 +161,7 @@ class MASXOrchestrator:
         per_flashpoint = StateGraph(MASXState)
         per_flashpoint.add_node("domain_classification", self._run_domain_classifier)
         per_flashpoint.add_node("query_planning", self._run_query_planner)
-        per_flashpoint.add_node("entity_extraction", self._run_entity_extractor)
+        per_flashpoint.add_node("language_agent", self._run_language_agent)
         #---now here
          
          
@@ -182,15 +182,15 @@ class MASXOrchestrator:
 
         per_flashpoint.set_entry_point("domain_classification")
         per_flashpoint.add_edge("domain_classification", "query_planning")
-        per_flashpoint.add_edge("query_planning", "entity_extraction")
+        per_flashpoint.add_edge("query_planning", "language_agent")
         
         
         #per_flashpoint.add_edge("query_planning", "data_fetching")
         per_flashpoint.add_edge("data_fetching", "merge_deduplication")
         per_flashpoint.add_edge("merge_deduplication", "language_processing")
         
-        per_flashpoint.add_edge("language_processing", "entity_extraction")
-        per_flashpoint.add_edge("entity_extraction", "event_analysis")
+        per_flashpoint.add_edge("language_processing", "language_agent")
+        per_flashpoint.add_edge("language_agent", "event_analysis")
         
         per_flashpoint.add_edge("event_analysis", "fact_checking")
         per_flashpoint.add_edge("fact_checking", "validation")
@@ -476,23 +476,36 @@ class MASXOrchestrator:
 
         return state
     
-    def _run_entity_extractor(self, state: MASXState) -> MASXState:
+    def _run_language_agent(self, state: MASXState) -> MASXState:
         """Run entity extraction step."""
         try:
-            agent = self.agents.get("entity_extractor")
+            agent = self.agents.get("language_agent")
             if not agent:
-                raise WorkflowException("EntityExtractor agent not available")
+                raise WorkflowException("LanguageAgent agent not available")
 
-            #input_data = state.agents.get("merge_deduplicator", {}).get("output", {})
-            #result = agent.run(input_data, run_id=state.run_id)
-            state.agents["entity_extractor"] = agent.state
-            state.workflow.current_step = "entity_extraction"
-
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+            input_data = {
+                "queries": flashpoint.queries,
+            }
+            # Run agent
+            result = agent.run(input_data, run_id=state.run_id)
+            
+            if result.success:
+                queries = result.data.get("queries", [])
+                query_states = [QueryState.model_validate(q) for q in queries]
+                #update the queries in the flashpoint
+                flashpoint.queries = query_states
+                state.data["current_flashpoint"] = flashpoint.model_dump() 
+            state.workflow.current_step = "language_agent"
+                
+           
         except Exception as e:
-            state.errors.append(f"Entity extraction failed: {str(e)}")
-            self.logger.error(f"Entity extraction error: {e}")
+            state.errors.append(f"LanguageAgent failed: {str(e)}")
+            self.logger.error(f"LanguageAgent error: {e}")
 
         return state
+    
+    
 
     def _run_data_fetchers(self, state: MASXState) -> MASXState:
         """Run data fetching step with parallel execution."""
