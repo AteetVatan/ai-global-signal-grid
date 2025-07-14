@@ -55,6 +55,6 @@ class QueryState(BaseModel):
     list_query_translated: Optional[List[QueryTranslated]] = Field(None, description="Translated query")
     entities: Optional[List[str]] = Field(None, description="List of named entities involved")    
     language: Optional[List[str]] = Field(None, description="List of languages")
-    country_language: Optional[Dict[str, List[str]]] = Field(None, description="List of country languages")
+    entity_languages: Optional[Dict[str, List[str]]] = Field(None, description="List of entity languages")
     rss_urls: Optional[List[str]] = Field(None, description="List of RSS URLs")
     feed_entries: Optional[List[FeedEntry]] = Field(None, description="List of feed entries")

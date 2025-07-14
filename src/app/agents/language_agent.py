@@ -7,7 +7,7 @@ This agent is responsible for:
 - Handling errors in entity extraction
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from datetime import datetime
 
 from .base import BaseAgent, AgentResult
@@ -58,8 +58,9 @@ class LanguageAgent(BaseAgent):
             for query in queries:
                 entities = query.entities
                 #get all languages associated with the entities
-                languages = self._get_languages_from_entities(entities)
+                languages, entity_languages = self._get_languages_from_entities(entities)
                 query.language = languages
+                query.entity_languages = entity_languages
 
             self.logger.info("Language extraction completed", total_items=len(queries))
 
@@ -85,10 +86,11 @@ class LanguageAgent(BaseAgent):
                 metadata={"agent": self.name}
             )
 
-    def _get_languages_from_entities(self, entities: List[str]) -> List[str]:
+    def _get_languages_from_entities(self, entities: List[str]) -> Tuple[List[str], Dict[str, List[str]]]:
         """Get all languages associated with the entities."""
         try:
             language_list = []
+            entity_languages = {}
             for entity in entities:
             #get the language of the entity
                 country = self.country_normalizer.normalize(entity)
@@ -103,16 +105,28 @@ class LanguageAgent(BaseAgent):
                         #get the language of the country
                         language = LanguageService.get_languages_for_country_code(alpha2)                
                         language_list.extend(language)
+                        
+                        if alpha2 not in entity_languages:
+                            entity_languages[alpha2] = []
+                        entity_languages[alpha2].extend(language)
+                        
+                        
                         continue
                         
                 #get the language of the entity
                 language = LanguageService.get_languages_for_entity(entity)                
                 language_list.extend(language)            
+                if entity not in entity_languages:
+                    entity_languages[entity] = []
+                entity_languages[entity].extend(language)
+                
         except Exception as e:
             self.logger.error(f"Error getting languages from entities: {e}")
             return []
                 
-
+        #every language_list must have english "en" the default
+        if "en" not in language_list:
+            language_list.append("en")
     
         #remove duplicates use dict key to remove duplicates
         language_list = list(dict.fromkeys(language_list))  
@@ -124,13 +138,13 @@ class LanguageAgent(BaseAgent):
             if lang in GOOGLE_TRANSLATE_VARIANTS:
                 google_variants.extend(GOOGLE_TRANSLATE_VARIANTS[lang])
         language_list.extend(google_variants)
-        language_list = list(dict.fromkeys(language_list))
-        
+        language_list = list(dict.fromkeys(language_list))       
+       
               
         #sort the languages
         language_list.sort()        
         #return the languages
-        return language_list
+        return language_list, entity_languages
     
     
     

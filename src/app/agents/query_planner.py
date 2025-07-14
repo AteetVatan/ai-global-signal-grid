@@ -110,7 +110,7 @@ class QueryPlanner(BaseAgent):
                     list_query_translated=[QueryTranslated(language="en", query_translated=query_text)],
                     entities=entities,
                     language=["en"],
-                    country_language={},
+                    entity_languages={},
                     rss_urls=[],
                     feed_entries=[])
                 query_states.append(query_state) 
