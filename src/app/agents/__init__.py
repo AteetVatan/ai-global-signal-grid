@@ -23,6 +23,7 @@ from .validator import Validator
 from .memory_manager import MemoryManager
 from .logging_auditor import LoggingAuditor
 from .flashpoint_llm_agent import FlashpointLLMAgent
+from .google_rss_agent import GoogleRssAgent
 
 __all__ = [
     "BaseAgent",
@@ -41,4 +42,5 @@ __all__ = [
     "MemoryManager",
     "LoggingAuditor",
     "FlashpointLLMAgent",
+    "GoogleRssAgent",
 ]
