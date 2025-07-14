@@ -35,7 +35,7 @@ class NewsFetcher(BaseAgent):
         self.data_sources_service = DataSourcesService()
         self.logger = get_agent_logger("NewsFetcher")
 
-    async def fetch_news(
+    def execute(
         self, queries: List[Dict[str, Any]], max_articles: Optional[int] = 100
     ) -> AgentResult:
         """
@@ -63,7 +63,7 @@ class NewsFetcher(BaseAgent):
                     continue
 
                 # Fetch articles for this query
-                articles = await self._fetch_articles_for_query(
+                articles = self._fetch_articles_for_query(
                     query_text, max_articles
                 )
                 all_articles.extend(articles)
@@ -99,13 +99,13 @@ class NewsFetcher(BaseAgent):
             self.logger.error(f"News fetching failed: {e}")
             raise AgentException(f"News fetching failed: {str(e)}")
 
-    async def _fetch_articles_for_query(
+    def _fetch_articles_for_query(
         self, query: str, max_articles: int
     ) -> List[Dict[str, Any]]:
         """Fetch articles for a specific query."""
         try:
             # Use the data sources service to fetch from Google News RSS
-            articles = await self.data_sources_service.fetch_google_news_rss(
+            articles = self.data_sources_service.fetch_google_news_rss(
                 query=query, max_results=max_articles
             )
 
@@ -129,7 +129,7 @@ class NewsFetcher(BaseAgent):
             self.logger.warning(f"Failed to fetch articles for query '{query}': {e}")
             return []
 
-    async def fetch_trending_news(
+    def fetch_trending_news(
         self, categories: Optional[List[str]] = None, max_articles: Optional[int] = 50
     ) -> AgentResult:
         """
@@ -157,7 +157,7 @@ class NewsFetcher(BaseAgent):
 
             for category in categories:
                 query = f"category:{category}"
-                articles = await self._fetch_articles_for_query(query, max_articles)
+                articles = self._fetch_articles_for_query(query, max_articles)
                 all_articles.extend(articles)
 
             result = {
@@ -181,7 +181,7 @@ class NewsFetcher(BaseAgent):
             self.logger.error(f"Trending news fetching failed: {e}")
             raise AgentException(f"Trending news fetching failed: {str(e)}")
 
-    async def validate_articles(self, articles: List[Dict[str, Any]]) -> AgentResult:
+    def validate_articles(self, articles: List[Dict[str, Any]]) -> AgentResult:
         """
         Validate fetched articles for quality and relevance.
 
