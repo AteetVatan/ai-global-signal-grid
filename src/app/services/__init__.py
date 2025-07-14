@@ -19,6 +19,7 @@ from .database import DatabaseService
 from .translation import TranslationService
 from .embedding import EmbeddingService
 from .llm_service import LLMService
+from .feed_parser_service import FeedParserService
 from .data_sources import DataSourcesService, Article, GDELTEvent
 from .data_processing import DataProcessingPipeline, ProcessedArticle, TrendAnalysis
 from .streaming import StreamingService, WebSocketManager, StreamEvent, StreamFilter
@@ -37,6 +38,7 @@ __all__ = [
     "TranslationService",
     "EmbeddingService",
     "LLMService",
+    "FeedParserService",
     "DataSourcesService",
     "Article",
     "GDELTEvent",
