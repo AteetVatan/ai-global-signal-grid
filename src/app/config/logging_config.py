@@ -185,7 +185,7 @@ def log_agent_action(
     result: Optional[Dict[str, Any]] = None,
     status: str = "success",
     error: Optional[str] = None,
-    run_id: Optional[str] = None,
+    workflow_id: Optional[str] = None,
 ) -> None:
     """
     Log a standardized agent action for audit purposes.
@@ -196,7 +196,7 @@ def log_agent_action(
     result: Output result from the action
     status: Status of the action ('success', 'failure', 'warning')
     error: Error message if action failed
-    run_id: Unique identifier for the current run
+    workflow_id: Unique identifier for the current run
 
     This function provides consistent logging format for all agent actions,
     enabling comprehensive audit trails and monitoring.
@@ -208,8 +208,8 @@ def log_agent_action(
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
 
-    if run_id:
-        log_data["run_id"] = run_id
+    if workflow_id:
+        log_data["workflow_id"] = workflow_id
 
     if parameters:
         log_data["parameters"] = parameters
@@ -238,7 +238,7 @@ def log_workflow_step(
     input_data: Optional[Dict[str, Any]] = None,
     output_data: Optional[Dict[str, Any]] = None,
     duration: Optional[float] = None,
-    run_id: Optional[str] = None,
+    workflow_id: Optional[str] = None,
 ) -> None:
     """
     Log a workflow step execution.
@@ -248,7 +248,7 @@ def log_workflow_step(
     input_data: Input data for the step
     output_data: Output data from the step
     duration: Execution duration in seconds
-    run_id: Unique identifier for the current run
+    workflow_id: Unique identifier for the current run
     """
     log_data = {
         "step_name": step_name,
@@ -256,8 +256,8 @@ def log_workflow_step(
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
 
-    if run_id:
-        log_data["run_id"] = run_id
+    if workflow_id:
+        log_data["workflow_id"] = workflow_id
 
     if input_data:
         log_data["input"] = input_data

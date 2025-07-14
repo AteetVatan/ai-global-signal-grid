@@ -76,12 +76,12 @@ class BaseAgent(ABC):
         pass
 
     def run(
-        self, input_data: Dict[str, Any], run_id: Optional[str] = None
+        self, input_data: Dict[str, Any], workflow_id: Optional[str] = None
     ) -> AgentResult:
         """
         Run the agent with full logging, error handling, and state management.
         Args: input_data: Input data for the agent
-            run_id: Optional run ID for tracking
+            workflow_id: Optional run ID for tracking
         Returns: AgentResult: Result from agent execution
         """
         # Initialize agent state
@@ -98,7 +98,7 @@ class BaseAgent(ABC):
             self.name,
             "start_execution",
             parameters=input_data,
-            run_id=run_id,
+            workflow_id= workflow_id,
         )
 
         try:
@@ -121,7 +121,7 @@ class BaseAgent(ABC):
                     "success": result.success,
                     "execution_time": result.execution_time,
                 },
-                run_id=run_id,
+                workflow_id=workflow_id,
             )
 
             return result
@@ -142,7 +142,7 @@ class BaseAgent(ABC):
                 self.name,
                 "execution_failed",
                 error=error_msg,
-                run_id=run_id,
+                workflow_id=workflow_id,
             )
 
             # Return error result

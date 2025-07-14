@@ -16,7 +16,7 @@ from .exceptions import (
     ExternalServiceException,
 )
 from .utils import (
-    generate_run_id,
+    generate_workflow_id,
     sanitize_text,
     validate_url,
     retry_with_backoff,
@@ -33,7 +33,7 @@ __all__ = [
     "ConfigurationException",
     "ValidationException",
     "ExternalServiceException",
-    "generate_run_id",
+    "generate_workflow_id",
     "sanitize_text",
     "validate_url",
     "retry_with_backoff",

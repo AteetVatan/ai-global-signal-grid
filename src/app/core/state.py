@@ -8,7 +8,7 @@ Usage: from app.core.state import MASXState, AgentState, WorkflowState
 These models are used throughout the orchestrator, agents, and logging/auditing subsystems.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Annotated
 from datetime import datetime
 from pydantic import BaseModel, Field
 from app.core.flashpoint import FlashpointDataset, FlashpointItem
@@ -66,8 +66,7 @@ class MASXState(BaseModel):
     Includes run metadata, agent states, workflow state, and errors.
     """
 
-    run_id: str = Field(..., description="Unique identifier for this workflow run")
-    sub_run_id: Optional[str] = Field(default=None, description="Unique identifier for this sub-workflow run")
+    workflow_id: Optional[str] = None 
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Run start timestamp (UTC)"
     )

@@ -30,7 +30,7 @@ class WorkflowRequest(BaseModel):
 class WorkflowResponse(BaseModel):
     """Workflow execution response model."""
 
-    run_id: str
+    workflow_id: str
     status: str
     workflow_type: str
     execution_time: float
@@ -41,7 +41,7 @@ class WorkflowResponse(BaseModel):
 class WorkflowStatus(BaseModel):
     """Workflow status model."""
 
-    run_id: str
+    workflow_id: str
     status: str
     current_step: str
     completed_steps: List[str]
@@ -74,7 +74,7 @@ async def execute_workflow(request: WorkflowRequest, background_tasks: Backgroun
         )
 
         response = WorkflowResponse(
-            run_id=result.run_id,
+            workflow_id=result.workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type=request.workflow_type,
             execution_time=result.workflow.execution_time or 0.0,
@@ -91,7 +91,7 @@ async def execute_workflow(request: WorkflowRequest, background_tasks: Backgroun
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Workflow execution completed: {result.run_id}")
+        logger.info(f"Workflow execution completed: {result.workflow_id}")
         return response
 
     except Exception as e:
@@ -121,7 +121,7 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
         result = orchestrator.run_daily_workflow(input_data=input_data)
 
         response = WorkflowResponse(
-            run_id=result.run_id,
+            workflow_id=result.workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type="daily",
             execution_time=result.workflow.execution_time or 0.0,
@@ -138,7 +138,7 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Daily workflow execution completed: {result.run_id}")
+        logger.info(f"Daily workflow execution completed: {result.workflow_id}")
         return response
 
     except Exception as e:
@@ -168,7 +168,7 @@ async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
         result = orchestrator.run_detection_workflow(input_data=input_data)
 
         response = WorkflowResponse(
-            run_id=result.run_id,
+            workflow_id=result.workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type="detection",
             execution_time=result.workflow.execution_time or 0.0,
@@ -184,7 +184,7 @@ async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Detection workflow execution completed: {result.run_id}")
+        logger.info(f"Detection workflow execution completed: {result.workflow_id}")
         return response
 
     except Exception as e:
@@ -194,24 +194,24 @@ async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
         )
 
 
-@router.get("/status/{run_id}", response_model=WorkflowStatus)
-async def get_workflow_status(run_id: str):
+@router.get("/status/{workflow_id}", response_model=WorkflowStatus)
+async def get_workflow_status(workflow_id: str):
     """
     Get workflow execution status.
 
     Args:
-        run_id: Workflow run ID
+        workflow_id: Workflow run ID
 
     Returns:
         WorkflowStatus: Workflow status information
     """
-    logger.info(f"Workflow status requested: {run_id}")
+    logger.info(f"Workflow status requested: {workflow_id}")
 
     try:
         # This would typically query a database or cache for workflow status
         # For now, return a mock status
         status = WorkflowStatus(
-            run_id=run_id,
+            workflow_id=workflow_id,
             status="completed",
             current_step="completed",
             completed_steps=[
@@ -227,12 +227,12 @@ async def get_workflow_status(run_id: str):
             estimated_completion=__import__("datetime").datetime.utcnow().isoformat(),
         )
 
-        logger.info(f"Workflow status retrieved: {run_id}")
+        logger.info(f"Workflow status retrieved: {workflow_id}")
         return status
 
     except Exception as e:
         logger.error(f"Workflow status retrieval failed: {e}")
-        raise HTTPException(status_code=404, detail=f"Workflow {run_id} not found")
+        raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
 
 
 @router.get("/history")
@@ -257,7 +257,7 @@ async def get_workflow_history(
         # For now, return mock data
         history = [
             {
-                "run_id": f"run_{i}",
+                "workflow_id": f"run_{i}",
                 "workflow_type": "daily",
                 "status": "completed",
                 "start_time": __import__("datetime").datetime.utcnow().isoformat(),
@@ -315,26 +315,26 @@ async def get_workflow_config():
         )
 
 
-@router.delete("/cancel/{run_id}")
-async def cancel_workflow(run_id: str):
+@router.delete("/cancel/{workflow_id}")
+async def cancel_workflow(workflow_id: str):
     """
     Cancel a running workflow.
 
     Args:
-        run_id: Workflow run ID to cancel
+        workflow_id: Workflow run ID to cancel
 
     Returns:
         Cancellation status
     """
-    logger.info(f"Workflow cancellation requested: {run_id}")
+    logger.info(f"Workflow cancellation requested: {workflow_id}")
 
     try:
         # This would typically implement workflow cancellation logic
         # For now, return success
 
-        logger.info(f"Workflow cancelled: {run_id}")
+        logger.info(f"Workflow cancelled: {workflow_id}")
         return {
-            "run_id": run_id,
+            "workflow_id": workflow_id,
             "status": "cancelled",
             "message": "Workflow cancellation requested",
         }

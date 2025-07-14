@@ -65,7 +65,7 @@ class TestMASXOrchestrator:
         state = MASXState()
         result_state = self.orchestrator._start_workflow(state)
 
-        assert result_state.run_id is not None
+        assert result_state.workflow_id is not None
         assert result_state.timestamp is not None
         assert result_state.workflow is not None
         assert result_state.workflow.current_step == "start"
@@ -341,7 +341,7 @@ class TestMASXOrchestrator:
 
         # Test state
         state = MASXState()
-        state.run_id = "test-run-123"
+        state.workflow_id = "test-run-123"
         state.agents = {"validator": {"output": {"valid": True}}}
 
         result_state = self.orchestrator._run_memory_manager(state)
@@ -377,13 +377,13 @@ class TestMASXOrchestrator:
             mock_workflow = Mock()
             mock_workflow.compile.return_value = Mock()
             mock_workflow.compile.return_value.invoke.return_value = MASXState(
-                run_id="test-run", workflow=WorkflowState(completed=True, failed=False)
+                workflow_id="test-run", workflow=WorkflowState(completed=True, failed=False)
             )
             mock_create.return_value = mock_workflow
 
             result = self.orchestrator.run_workflow("daily")
 
-            assert result.run_id == "test-run"
+            assert result.workflow_id == "test-run"
             assert result.workflow.completed is True
             assert result.workflow.failed is False
 

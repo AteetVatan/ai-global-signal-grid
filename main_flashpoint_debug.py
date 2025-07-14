@@ -104,7 +104,7 @@ Examples:
         print(f"Configuration: {json.dumps(input_data, indent=2)}")
 
         # Run flashpoint detection
-        result = agent.run(input_data, run_id="debug_run")
+        result = agent.run(input_data, workflow_id="debug_run")
 
         if result.success:
             print("\n" + "=" * 60)

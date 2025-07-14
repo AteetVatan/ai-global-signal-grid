@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from .exceptions import ExternalServiceException
 
 
-def generate_run_id() -> str:
+def generate_workflow_id() -> str:
     """
     Generate a unique run ID for workflow execution.
     Returns:

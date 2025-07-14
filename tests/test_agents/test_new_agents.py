@@ -184,7 +184,7 @@ class TestAgentIntegration:
         """Test that all agents have execute methods that return MASXState."""
         # Create a basic state
         state = MASXState(
-            run_id="test-run",
+            workflow_id="test-run",
             workflow={
                 "workflow_id": "test-workflow",
                 "start_time": datetime.utcnow().isoformat(),

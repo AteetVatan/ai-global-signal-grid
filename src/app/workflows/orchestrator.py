@@ -24,7 +24,7 @@ from ..agents.base import AgentResult
 from ..core.state import MASXState, AgentState, WorkflowState
 
 from ..core.exceptions import WorkflowException
-from ..core.utils import generate_run_id, measure_execution_time
+from ..core.utils import generate_workflow_id, measure_execution_time
 from ..config.logging_config import get_workflow_logger, log_workflow_step
 from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
@@ -54,11 +54,12 @@ class MASXOrchestrator:
         """Initialize all available agents."""
         try:
             from ..agents import (
+                GoogleRssAgent,
                 FlashpointLLMAgent,
                 DomainClassifier,
                 QueryPlanner,
                 LanguageAgent,
-                Translator,
+                Translator,                
                 # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
@@ -74,11 +75,12 @@ class MASXOrchestrator:
 
             # Initialize agents
             self.agents = {
+                "google_rss_agent": GoogleRssAgent(),
                 "flashpoint_llm_agent": FlashpointLLMAgent(),
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
                 "language_agent": LanguageAgent(),
-                "translation_agent": Translator(),
+                "translation_agent": Translator(),                
                 #"news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
@@ -159,24 +161,26 @@ class MASXOrchestrator:
     def _create_daily_workflow(self) -> StateGraph:
         """Create the main daily workflow graph."""
         
-       #Subgraph for each flashpoint ---
+       # Google RSS Subgraph for each flashpoint ---
         per_flashpoint = StateGraph(MASXState)
         per_flashpoint.add_node("domain_classification", self._run_domain_classifier)
         per_flashpoint.add_node("query_planning", self._run_query_planner)
         per_flashpoint.add_node("language_agent", self._run_language_agent)
         per_flashpoint.add_node("translation_agent", self._run_translation_agent)
+        per_flashpoint.add_node("google_rss_agent", self._run_google_rss_agent)
+        per_flashpoint.add_node("data_fetching", self._run_data_fetchers)
         #---now here
          
          
         
-        per_flashpoint.add_node("data_fetching", self._run_data_fetchers)
-        per_flashpoint.add_node("merge_deduplication", self._run_merge_deduplicator)
-        per_flashpoint.add_node("language_processing", self._run_language_processing)
+        #per_flashpoint.add_node("data_fetching", self._run_data_fetchers)
+        #per_flashpoint.add_node("merge_deduplication", self._run_merge_deduplicator)
+        #per_flashpoint.add_node("language_processing", self._run_language_processing)
         #per_flashpoint.add_node("entity_extraction", self._run_entity_extractor)
-        per_flashpoint.add_node("event_analysis", self._run_event_analyzer)
-        per_flashpoint.add_node("fact_checking", self._run_fact_checker)
-        per_flashpoint.add_node("validation", self._run_validator)
-        per_flashpoint.add_node("memory_storage", self._run_memory_manager)
+        #per_flashpoint.add_node("event_analysis", self._run_event_analyzer)
+        #per_flashpoint.add_node("fact_checking", self._run_fact_checker)
+        #per_flashpoint.add_node("validation", self._run_validator)
+        #per_flashpoint.add_node("memory_storage", self._run_memory_manager)
 
 
 
@@ -187,27 +191,29 @@ class MASXOrchestrator:
         per_flashpoint.add_edge("domain_classification", "query_planning")
         per_flashpoint.add_edge("query_planning", "language_agent")
         per_flashpoint.add_edge("language_agent", "translation_agent")
-        
-        
+        per_flashpoint.add_edge("translation_agent", "google_rss_agent")
+        per_flashpoint.add_edge("google_rss_agent", "data_fetching")
+
+
+       
         
         #per_flashpoint.add_edge("query_planning", "data_fetching")
-        per_flashpoint.add_edge("data_fetching", "merge_deduplication")
-        per_flashpoint.add_edge("merge_deduplication", "language_processing")
+        #per_flashpoint.add_edge("data_fetching", "merge_deduplication")
+        #per_flashpoint.add_edge("merge_deduplication", "language_processing")
         
-        per_flashpoint.add_edge("language_processing", "language_agent")
-        per_flashpoint.add_edge("language_agent", "event_analysis")
+        #per_flashpoint.add_edge("language_processing", "language_agent")
+        #per_flashpoint.add_edge("language_agent", "event_analysis")
         
-        per_flashpoint.add_edge("event_analysis", "fact_checking")
-        per_flashpoint.add_edge("fact_checking", "validation")
-        per_flashpoint.add_edge("validation", "memory_storage")
-        per_flashpoint.set_finish_point("memory_storage")       
+        #per_flashpoint.add_edge("event_analysis", "fact_checking")
+        #per_flashpoint.add_edge("fact_checking", "validation")
+        #per_flashpoint.add_edge("validation", "memory_storage")
+        #per_flashpoint.set_finish_point("memory_storage")       
         
         # Compile the subgraph into a single node that can be mapped -----
         per_flashpoint_subgraph = per_flashpoint.compile()
         
         
         workflow = StateGraph(MASXState)
-
           # --- Main workflow nodes ---
         workflow.add_node("start", self._start_workflow)
         workflow.add_node("flashpoint_detection", self._run_flashpoint_detection)
@@ -216,32 +222,29 @@ class MASXOrchestrator:
    
         # each flashpoint to parallel processing
         def fan_out_flashpoints(state: MASXState):
-            
-       
             #ateet 
-            flashpointdataset = state.data["all_flashpoints"]
-            all_flashpoints = deepcopy(flashpointdataset)
-            
-            #create a list of states (MASXState) for each flashpoint
+            flashpointdataset = state.data["all_flashpoints"] 
             state_list = []
-            for flashpoint in all_flashpoints:
-                new_state = deepcopy(state)
-                new_state.sub_run_id = "sub_" + generate_run_id()
-                new_state.data["current_flashpoint"] = flashpoint
+            for flashpoint in flashpointdataset:               
+                 # Initialize state
+                new_state = MASXState(
+                    workflow_id= "sub_" + generate_workflow_id(),
+                    workflow=WorkflowState(), # generating a new workflowstate prevent th run_id bug.
+                    metadata=deepcopy(state.metadata),
+                    data={
+                        "parent_workflow_id": state.workflow_id,
+                        "current_flashpoint": flashpoint,
+                        "all_flashpoints": flashpointdataset
+                    }
+                )                
                 state_list.append(new_state)
-            
-            
             return [Send("process_one_fp", state) for state in state_list]
    
         workflow.add_edge(START, "start")
         workflow.add_edge("start", "flashpoint_detection")
         workflow.add_conditional_edges("flashpoint_detection", fan_out_flashpoints)
         workflow.add_edge("process_one_fp", "end")
-        workflow.add_edge("end", END)
-        
-        
-        
-        
+        workflow.add_edge("end", END)        
         return workflow
         
 
@@ -288,8 +291,8 @@ class MASXOrchestrator:
     # Workflow step implementations
     def _start_workflow(self, state: MASXState) -> MASXState:
         """Initialize workflow state."""
-        run_id = generate_run_id()
-        state.run_id = run_id
+        if not state.workflow_id:
+            state.workflow_id = generate_workflow_id()
         state.timestamp = datetime.utcnow()
         state.workflow = WorkflowState(
             steps=[
@@ -306,8 +309,8 @@ class MASXOrchestrator:
             self.logger,
             "start",
             "workflow_initialization",
-            output_data={"run_id": run_id},
-            run_id=run_id,
+            output_data={"workflow_id": state.workflow_id},
+            workflow_id=state.workflow_id,
         )
 
         return state
@@ -357,7 +360,7 @@ class MASXOrchestrator:
             }
 
             # Run flashpoint detection
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
 
             # Update state
             #state.agents["flashpoint_llm_agent"] = agent.state
@@ -381,18 +384,18 @@ class MASXOrchestrator:
                 "flashpoint_detection",
                 input_data=input_data,
                 output_data=result.data,
-                run_id=state.run_id,
+                workflow_id=state.workflow_id,
             )
 
             self.logger.info(
                 f"Flashpoint detection completed: {len(state.metadata.get('flashpoints', []))} flashpoints found",
-                run_id=state.run_id,
+                workflow_id=state.workflow_id,
                 flashpoint_count=len(state.metadata.get("flashpoints", [])),
             )
 
         except Exception as e:
             state.errors.append(f"Flashpoint detection failed: {str(e)}")
-            self.logger.error(f"Flashpoint detection error: {e}", run_id=state.run_id)
+            self.logger.error(f"Flashpoint detection error: {e}", workflow_id=state.workflow_id)
 
         return state
 
@@ -403,7 +406,7 @@ class MASXOrchestrator:
             if not agent:
                 raise WorkflowException("DomainClassifier agent not available")
             
-            if self.settings.debug:                
+            if self.settings.debug and False:                
                 #dummy agent result 
                 flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])             
                 domains = '["Military / Conflict / Strategic Alliances", "Economic / Trade / Sanctions", "Religious Tensions / Ideological Movements", "Sovereignty / Border / Legal Disputes", "Environmental Flashpoints / Resource Crises", "Civilizational / Ethnonationalist Narratives"]'
@@ -417,8 +420,7 @@ class MASXOrchestrator:
             # Prepare input data
             input_data = flashpoint.model_dump()
             # Run agent
-            result = agent.run(input_data, run_id=state.run_id)
-            
+            result = agent.run(input_data, workflow_id=state.workflow_id)            
             
             # Update state
             state.agents["domain_classifier"] = agent.state
@@ -435,9 +437,8 @@ class MASXOrchestrator:
                 "agent_execution",
                 input_data=input_data,
                 output_data=result.data,
-                run_id=state.run_id,
+                workflow_id=state.workflow_id,
             )
-
         except Exception as e:
             state.errors.append(f"Domain classification failed: {str(e)}")
             self.logger.error(f"Domain classification error: {e}")
@@ -450,7 +451,8 @@ class MASXOrchestrator:
             agent = self.agents.get("query_planner")
             if not agent:
                 raise WorkflowException("QueryPlanner agent not available")
-
+            
+            #Flashpoint validation
             flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
             # Prepare input data
             input_data = {
@@ -461,19 +463,25 @@ class MASXOrchestrator:
             }
 
             # Run agent
-            result = agent.run(input_data, run_id=state.run_id)
-
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             # Update state
             state.agents["query_planner"] = agent.state
-            if result.success:
-                
+            if result.success:                
                 result_query_states = result.data.get("query_states", [])               
                 query_states = [QueryState.model_validate(q) for q in result_query_states]
-                #query_states = QueryState.model_validate(result.data.get("query_states", []))
                 flashpoint.queries = query_states
                 state.data["current_flashpoint"] = flashpoint.model_dump()
 
             state.workflow.current_step = "query_planning"
+            
+            log_workflow_step(
+                self.logger,
+                "query_planning",
+                "agent_execution",
+                input_data=input_data,
+                output_data=result.data,
+                workflow_id=state.workflow_id,
+            )
 
         except Exception as e:
             state.errors.append(f"Query planning failed: {str(e)}")
@@ -482,18 +490,24 @@ class MASXOrchestrator:
         return state
     
     def _run_language_agent(self, state: MASXState) -> MASXState:
-        """Run entity extraction step."""
+        """Run language agent step.
+        This agent is responsible for extracting the language from the entities.        
+        """
         try:
             agent = self.agents.get("language_agent")
             if not agent:
                 raise WorkflowException("LanguageAgent agent not available")
-
+            
+            #Flashpoint validation
             flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+            # Prepare input data
             input_data = {
                 "queries": flashpoint.queries,
             }
             # Run agent
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
+            # Update state
+            state.agents["language_agent"] = agent.state
             
             if result.success:
                 queries = result.data.get("queries", [])
@@ -503,7 +517,15 @@ class MASXOrchestrator:
                 state.data["current_flashpoint"] = flashpoint.model_dump() 
             state.workflow.current_step = "language_agent"
                 
-           
+            log_workflow_step(
+                self.logger,
+                "language_agent",
+                "agent_execution",
+                input_data=input_data,
+                output_data=result.data,
+                workflow_id=state.workflow_id,
+            )
+            
         except Exception as e:
             state.errors.append(f"LanguageAgent failed: {str(e)}")
             self.logger.error(f"LanguageAgent error: {e}")
@@ -512,18 +534,26 @@ class MASXOrchestrator:
     
     
     def _run_translation_agent(self, state: MASXState) -> MASXState:
-        """Run entity extraction step."""
+        """
+        Run translation step.
+        This agent is responsible for translating the queries to the target languages 
+        (The languages extracted from the entities by the language agent).
+        """
         try:
             agent = self.agents.get("translation_agent")
             if not agent:
                 raise WorkflowException("TranslationAgent agent not available")
 
+            #Flashpoint validation
             flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+            # Prepare input data
             input_data = {
                 "queries": flashpoint.queries,
             }
-            # Run agent
-            result = agent.run(input_data, run_id=state.run_id)
+             # Run agent
+            result = agent.run(input_data, workflow_id=state.workflow_id)
+            # Update state
+            state.agents["translation_agent"] = agent.state
             
             if result.success:
                 queries = result.data.get("queries", [])
@@ -532,7 +562,15 @@ class MASXOrchestrator:
                 flashpoint.queries = query_states
                 state.data["current_flashpoint"] = flashpoint.model_dump() 
             state.workflow.current_step = "translation_agent"
-                
+            
+            log_workflow_step(
+                self.logger,
+                "translation_agent",
+                "agent_execution",
+                input_data=input_data,
+                output_data=result.data,
+                workflow_id=state.workflow_id,
+            )
            
         except Exception as e:
             state.errors.append(f"TranslationAgent failed: {str(e)}")
@@ -540,45 +578,77 @@ class MASXOrchestrator:
 
         return state
     
+    def _run_google_rss_agent(self, state: MASXState) -> MASXState:
+        """Run Google RSS Agent."""
+        # try:
+        #     agent = self.agents.get("google_rss_agent")
+        #     if not agent:
+        #         raise WorkflowException("GoogleRSSAgent agent not available")
+            
+        #     flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+        #     input_data = {
+        #         "queries": flashpoint.queries,
+        #     }
+        #     # Run agent
+        #     result = agent.run(input_data, workflow_id=state.workflow_id)
+            
+        #     if result.success:
+        #         queries = result.data.get("queries", [])
+        #         query_states = [QueryState.model_validate(q) for q in queries]
+        #         flashpoint.queries = query_states
+        #         state.data["current_flashpoint"] = flashpoint.model_dump() 
+        #     state.workflow.current_step = "google_rss_agent"
+                    
+            
+        # except Exception as e:
+        #     state.errors.append(f"GoogleRSSAgent failed: {str(e)}")
+        #     self.logger.error(f"GoogleRSSAgent error: {e}")
+
+        return state    
+            
+            
+            
+    
     
 
     def _run_data_fetchers(self, state: MASXState) -> MASXState:
         """Run data fetching step with parallel execution."""
-        try:
-            queries = state.metadata.get("queries", [])
+        chk= state.data["current_flashpoint"]
+        #try:
+        #     queries = state.metadata.get("queries", [])
 
-            # Run news fetcher and event fetcher in parallel
-            tasks = []
+        #     # Run news fetcher and event fetcher in parallel
+        #     tasks = []
 
-            # News fetcher task
-            if "news_fetcher" in self.agents:
-                news_task = self._run_agent_async("news_fetcher", {"queries": queries})
-                tasks.append(news_task)
+        #     # News fetcher task
+        #     if "news_fetcher" in self.agents:
+        #         news_task = self._run_agent_async("news_fetcher", {"queries": queries})
+        #         tasks.append(news_task)
 
-            # Event fetcher task
-            if "event_fetcher" in self.agents:
-                event_task = self._run_agent_async(
-                    "event_fetcher", {"queries": queries}
-                )
-                tasks.append(event_task)
+        #     # Event fetcher task
+        #     if "event_fetcher" in self.agents:
+        #         event_task = self._run_agent_async(
+        #             "event_fetcher", {"queries": queries}
+        #         )
+        #         tasks.append(event_task)
 
-            # Wait for all tasks to complete
-            if tasks:
-                results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
+        #     # Wait for all tasks to complete
+        #     if tasks:
+        #         results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
 
-                # Process results
-                for i, result in enumerate(results):
-                    agent_name = ["news_fetcher", "event_fetcher"][i]
-                    if isinstance(result, Exception):
-                        state.errors.append(f"{agent_name} failed: {str(result)}")
-                    else:
-                        state.agents[agent_name] = result
+        #         # Process results
+        #         for i, result in enumerate(results):
+        #             agent_name = ["news_fetcher", "event_fetcher"][i]
+        #             if isinstance(result, Exception):
+        #                 state.errors.append(f"{agent_name} failed: {str(result)}")
+        #             else:
+        #                 state.agents[agent_name] = result
 
-            state.workflow.current_step = "data_fetching"
+        #     state.workflow.current_step = "data_fetching"
 
-        except Exception as e:
-            state.errors.append(f"Data fetching failed: {str(e)}")
-            self.logger.error(f"Data fetching error: {e}")
+        # except Exception as e:
+        #     state.errors.append(f"Data fetching failed: {str(e)}")
+        #     self.logger.error(f"Data fetching error: {e}")
 
         return state
 
@@ -607,7 +677,7 @@ class MASXOrchestrator:
                 "event_data": state.agents.get("event_fetcher", {}).get("output"),
             }
 
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             state.agents["merge_deduplicator"] = agent.state
             state.workflow.current_step = "merge_deduplication"
 
@@ -626,14 +696,14 @@ class MASXOrchestrator:
                 input_data = state.agents.get("merge_deduplicator", {}).get(
                     "output", {}
                 )
-                result = agent.run(input_data, run_id=state.run_id)
+                result = agent.run(input_data, workflow_id=state.workflow_id)
                 state.agents["language_resolver"] = agent.state
 
             # Run translator if needed
             if "translator" in self.agents:
                 agent = self.agents["translator"]
                 input_data = state.agents.get("language_resolver", {}).get("output", {})
-                result = agent.run(input_data, run_id=state.run_id)
+                result = agent.run(input_data, workflow_id=state.workflow_id)
                 state.agents["translator"] = agent.state
 
             state.workflow.current_step = "language_processing"
@@ -660,7 +730,7 @@ class MASXOrchestrator:
                 "entities": state.agents.get("entity_extractor", {}).get("output", {}),
             }
 
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             state.agents["event_analyzer"] = agent.state
             state.workflow.current_step = "event_analysis"
 
@@ -678,7 +748,7 @@ class MASXOrchestrator:
                 raise WorkflowException("FactChecker agent not available")
 
             input_data = state.agents.get("event_analyzer", {}).get("output", {})
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             state.agents["fact_checker"] = agent.state
             state.workflow.current_step = "fact_checking"
 
@@ -696,7 +766,7 @@ class MASXOrchestrator:
                 raise WorkflowException("Validator agent not available")
 
             input_data = state.agents.get("fact_checker", {}).get("output", {})
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             state.agents["validator"] = agent.state
             state.workflow.current_step = "validation"
 
@@ -715,10 +785,10 @@ class MASXOrchestrator:
 
             input_data = {
                 "hotspots": state.agents.get("validator", {}).get("output", {}),
-                "run_id": state.run_id,
+                "run_id": state.workflow_id,
             }
 
-            result = agent.run(input_data, run_id=state.run_id)
+            result = agent.run(input_data, workflow_id=state.workflow_id)
             state.agents["memory_manager"] = agent.state
             state.workflow.current_step = "memory_storage"
 
@@ -749,7 +819,7 @@ class MASXOrchestrator:
                 "failed": state.workflow.failed,
                 "error_count": len(state.errors),
             },
-            run_id=state.run_id,
+            run_id=state.workflow_id,
         )
 
         return state
@@ -827,7 +897,7 @@ class MASXOrchestrator:
 
                 # Initialize state
                 initial_state = MASXState(
-                    run_id=generate_run_id(),
+                    workflow_id=generate_workflow_id(),
                     workflow=WorkflowState(),
                     metadata=input_data or {},
                     data={}
@@ -838,7 +908,7 @@ class MASXOrchestrator:
 
                 self.logger.info(
                     f"{workflow_type} workflow completed",
-                    run_id=final_state.run_id,
+                    run_id=final_state.workflow_id,
                     success=final_state.workflow.completed
                     and not final_state.workflow.failed,
                     error_count=len(final_state.errors),
