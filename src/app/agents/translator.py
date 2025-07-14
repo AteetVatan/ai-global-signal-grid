@@ -59,6 +59,7 @@ class Translator(BaseAgent):
                             translated_text = query.query
                         else:
                             translated_text = self.translation_service.translate(target_lang=lang, source_lang="en",text=query.query)
+                            self.logger.info(f"Translated query: {query.query} to {lang} with text: {translated_text}")
                             translated_items.append(translated_text)      
                             query_translated = QueryTranslated(language=lang, query_translated=translated_text)
                             query.list_query_translated.append(query_translated)
