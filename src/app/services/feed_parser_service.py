@@ -65,25 +65,27 @@ class FeedParserService:
 
         return valid_entries
 
+
     def run(self, query_state: QueryState) -> QueryState:
         """
         Main entry point for LangGraph node. Enriches each query with valid recent RSS entries.
+        - For each RSS URL, fetch and process entries in parallel.
         """
+        if not query_state.rss_urls:
+            logger.warning(f"[{query_state.query}] No RSS URLs found.")
+            return query_state
+
+        # Fetch all feeds in parallel
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            results: List[Tuple[str, List[dict]]] = list(executor.map(self._fetch_rss, query_state.rss_urls))
+
         feed_entries = []
+        for url, entries in results:
+            if entries:
+                processed = self._process_feed_entries(entries)
+                feed_entries.extend(processed)
 
-        for rss_url in query_state.rss_urls:
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                results = list(executor.map(self._fetch_rss, rss_url))
-
-            feed_entries = []
-            for url, entries in results:
-                if entries:
-                    processed = self._process_feed_entries(entries)
-                    feed_entries.extend(processed)
-
-            query_state.feed_entries = feed_entries
-            logger.info(
-                f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries"
-            )
+        query_state.feed_entries = feed_entries
+        logger.info(f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries from {len(query_state.rss_urls)} feeds.")
 
         return query_state

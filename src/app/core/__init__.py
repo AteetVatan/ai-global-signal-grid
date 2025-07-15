@@ -7,6 +7,7 @@ from .state import MASXState, AgentState, WorkflowState
 from .language_utils import LanguageUtils
 from .querystate import QueryState, FeedEntry, QueryTranslated
 from .flashpoint import FlashpointItem, FlashpointDataset
+from .flashpointstore import FlashpointStore
 from .exceptions import (
     MASXException,
     AgentException,
@@ -20,7 +21,7 @@ from .utils import (
     sanitize_text,
     validate_url,
     retry_with_backoff,
-    measure_execution_time,
+    measure_execution_time, 
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "QueryTranslated",
     "FlashpointItem",
     "FlashpointDataset",
+    "FlashpointStore",
 ]
