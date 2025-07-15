@@ -50,7 +50,7 @@ class DomainClassifier(BaseAgent):
             name="DomainClassifier",
             description="Classifies content into geopolitical domains using LLM analysis",
         )
-        self.llm_service = LLMService()
+        self.llm_service = LLMService.get_instance()  # singleton
 
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """

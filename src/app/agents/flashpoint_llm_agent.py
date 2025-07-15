@@ -72,7 +72,7 @@ class FlashpointLLMAgent(BaseAgent):
         self.settings = get_settings()
 
         # Initialize services
-        self.llm_service = LLMService()
+        self.llm_service = LLMService.get_instance()  # singleton
         self.web_search = WebSearchService()
         self.flashpoint_service = FlashpointDetectionService()
         self.token_tracker = get_token_tracker()

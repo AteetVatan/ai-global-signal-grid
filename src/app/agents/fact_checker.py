@@ -35,7 +35,7 @@ class FactChecker(BaseAgent):
     ):
         """Initialize the Fact Checker agent."""
         super().__init__("fact_checker")
-        self.llm_service = llm_service or LLMService()
+        self.llm_service = LLMService.get_instance()  # singleton()
         self.database_service = database_service or DatabaseService()
         self.logger = logging.getLogger(__name__)
 
