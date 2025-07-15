@@ -12,12 +12,16 @@ Usage: from app.services.llm_service import LLMService
 
 import json
 import time
+import aiohttp
+import asyncio
 from typing import Any, Dict, List, Optional, Union
 
 import tiktoken
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+
+from asyncio_throttle import Throttler
 
 from ..config.settings import get_settings
 from ..core.exceptions import ExternalServiceException, ConfigurationException
@@ -34,12 +38,25 @@ class LLMService:
     - Token counting and cost tracking
     - Structured output generation
     """
+    
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls, provider: Optional[str] = None):
+        if cls._instance is None:
+            cls._instance = cls(provider)
+        return cls._instance
 
     def __init__(self, provider: Optional[str] = None):
         """
         Initialize LLM service.
         Args: provider: LLM provider to use ('openai', 'mistral', or None for auto-detect)
         """
+        if hasattr(self, "_initialized") and self._initialized:
+            return
+
+        self._initialized = True
+
         self.settings = get_settings()
         self.logger = get_logger(__name__)
 
@@ -59,6 +76,9 @@ class LLMService:
         self.total_tokens = 0
         self.total_cost = 0.0
 
+        # Throttling for mistral
+        self._throttler = Throttler(rate_limit=4, period=60) if self.provider == "mistral" else None
+
     def _init_provider(self):
         """Initialize the selected LLM provider."""
         if self.provider == "openai":
@@ -66,7 +86,6 @@ class LLMService:
                 raise ConfigurationException("OpenAI not configured")
 
             config = self.settings.get_llm_config("openai")
-            # self.client = OpenAI(api_key=config["api_key"]) #old way
             self.client = ChatOpenAI(
                 model_name=config["model"],
                 openai_api_key=config["api_key"],
@@ -81,16 +100,13 @@ class LLMService:
                 raise ConfigurationException("Mistral not configured")
 
             config = self.settings.get_llm_config("mistral")
-            self.client = ChatOpenAI(
-                model_name=config["model"],
-                openai_api_base=config["api_base"],
-                openai_api_key=config["api_key"],
-                temperature=config["temperature"],
-            )
+            self.client = None  # use aiohttp directly
             self.model = config["model"]
-            self.temperature = config["temperature"]
+            self.temperature = config.get("temperature", 0.0)
             self.max_tokens = config["max_tokens"]
             self.token_ref = config["token_ref"]
+            self.api_base = config["api_base"].rstrip("/")
+            self.api_key = config["api_key"]
 
         else:
             raise ConfigurationException(f"Unsupported LLM provider: {self.provider}")
@@ -123,9 +139,9 @@ class LLMService:
                     prompt, system_prompt, temperature, max_tokens, **kwargs
                 )
             elif self.provider == "mistral":
-                return self._generate_mistral(
+                return asyncio.run(self._generate_mistral_async(
                     prompt, system_prompt, temperature, max_tokens, **kwargs
-                )
+                ))
             else:
                 raise ConfigurationException(f"Unsupported provider: {self.provider}")
 
@@ -158,14 +174,13 @@ class LLMService:
             **kwargs,
         )
 
-        # Track usage
         self._track_usage(
             response.usage.prompt_tokens, response.usage.completion_tokens
         )
 
         return response.choices[0].message.content
 
-    def _generate_mistral(
+    async def _generate_mistral_async(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
@@ -173,22 +188,50 @@ class LLMService:
         max_tokens: Optional[int] = None,
         **kwargs,
     ) -> str:
-        """Generate text using Mistral API."""
-        messages = []
+        """
+        Async Mistral call using direct HTTP with throttle and retry.
+        """
+        async with self._throttler:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
-        if system_prompt:
-            messages.append(SystemMessage(content=system_prompt))
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature or 0.0,
+                "max_tokens": max_tokens or self.max_tokens,
+            }
 
-        messages.append(HumanMessage(content=prompt))
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
 
-        response = self.client.invoke(messages)
+            url = f"{self.api_base}/chat/completions"
 
-        # Note: Mistral doesn't provide token usage in the same way
-        # We'll estimate based on text length
-        estimated_tokens = len(prompt.split()) + len(response.content.split())
-        self._track_usage(estimated_tokens // 2, estimated_tokens // 2)
-
-        return response.content
+            for attempt in range(3):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(url, headers=headers, json=payload) as resp:
+                            if resp.status == 429:
+                                await asyncio.sleep(2 ** attempt)
+                                continue
+                            resp.raise_for_status()
+                            data = await resp.json()
+                            content = data["choices"][0]["message"]["content"]
+                            estimated_tokens = len(prompt.split()) + len(content.split())
+                            self._track_usage(estimated_tokens // 2, estimated_tokens // 2)
+                            return content
+                except Exception as e:
+                    self.logger.error(f"*****Mistral async call failed attempt {attempt}: {str(e)}", exc_info=True)
+                    if attempt == 2:
+                        raise ExternalServiceException(
+                            f"Mistral async call failed: {str(e)}",
+                            context={"provider": "mistral"},
+                        )
+                    await asyncio.sleep(2 ** attempt)
 
     def generate_structured_output(
         self,
@@ -211,7 +254,6 @@ class LLMService:
         Returns:
             Dict[str, Any]: Structured output matching the schema
         """
-        # Add JSON formatting instructions to prompt
         json_prompt = f"""
         {prompt}
 
@@ -225,9 +267,7 @@ class LLMService:
             json_prompt, system_prompt=system_prompt, temperature=temperature, **kwargs
         )
 
-        # Parse JSON response
         try:
-            # Clean response (remove markdown code blocks if present)
             cleaned_response = response.strip()
             if cleaned_response.startswith("```json"):
                 cleaned_response = cleaned_response[7:]
@@ -261,10 +301,9 @@ class LLMService:
         """
         self.total_tokens += input_tokens + output_tokens
 
-        # Calculate cost (approximate for Mistral)
         if self.provider == "openai":
-            input_cost = (input_tokens / 1000) * 0.01  # $0.01 per 1K input tokens
-            output_cost = (output_tokens / 1000) * 0.03  # $0.03 per 1K output tokens
+            input_cost = (input_tokens / 1000) * 0.01
+            output_cost = (output_tokens / 1000) * 0.03
             self.total_cost += input_cost + output_cost
 
         self.logger.debug(
@@ -296,7 +335,6 @@ class LLMService:
         try:
             return tiktoken.encoding_for_model(self.model)
         except KeyError:
-            # fallback to default tokenizer
             if self.token_ref:
                 return tiktoken.get_encoding(self.token_ref)
             else:
