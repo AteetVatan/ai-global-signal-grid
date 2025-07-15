@@ -217,7 +217,7 @@ def _initialize_daily_workflow(state: MASXState) -> MASXState:
         steps=["initialize", "classify_domain", "plan_queries", "fetch_data"],
     )
 
-    logger.info("Daily workflow initialized", run_id=state.workflow_id)
+    logger.info("Daily workflow initialized", run_id=state.workflow_id[0])
     return state
 
 
@@ -231,11 +231,11 @@ def _classify_domain_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "classify_domain"
         state.metadata["domains"] = ["Geopolitical", "Economic"]
 
-        logger.info("Domain classification completed", run_id=state.workflow_id)
+        logger.info("Domain classification completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Domain classification failed: {str(e)}")
-        logger.error(f"Domain classification error: {e}", run_id=state.workflow_id)
+        logger.error(f"Domain classification error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -249,11 +249,11 @@ def _plan_queries_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "plan_queries"
         state.metadata["queries"] = ["geopolitical news", "economic events"]
 
-        logger.info("Query planning completed", run_id=state.workflow_id)
+        logger.info("Query planning completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Query planning failed: {str(e)}")
-        logger.error(f"Query planning error: {e}", run_id=state.workflow_id)
+        logger.error(f"Query planning error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -270,11 +270,11 @@ def _fetch_data_step(state: MASXState) -> MASXState:
             "events": ["event1", "event2"],
         }
 
-        logger.info("Data fetching completed", run_id=state.workflow_id)
+        logger.info("Data fetching completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Data fetching failed: {str(e)}")
-        logger.error(f"Data fetching error: {e}", run_id=state.workflow_id)
+        logger.error(f"Data fetching error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -288,11 +288,11 @@ def _merge_data_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "merge_data"
         state.metadata["merged_data"] = ["article1", "article2", "event1"]
 
-        logger.info("Data merge completed", run_id=state.workflow_id)
+        logger.info("Data merge completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Data merge failed: {str(e)}")
-        logger.error(f"Data merge error: {e}", run_id=state.workflow_id)
+        logger.error(f"Data merge error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -309,11 +309,11 @@ def _process_language_step(state: MASXState) -> MASXState:
             "translated_article2",
         ]
 
-        logger.info("Language processing completed", run_id=state.workflow_id)
+        logger.info("Language processing completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Language processing failed: {str(e)}")
-        logger.error(f"Language processing error: {e}", run_id=state.workflow_id)
+        logger.error(f"Language processing error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -331,11 +331,11 @@ def _extract_entities_step(state: MASXState) -> MASXState:
             "locations": ["Washington", "Moscow"],
         }
 
-        logger.info("Entity extraction completed", run_id=state.workflow_id)
+        logger.info("Entity extraction completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Entity extraction failed: {str(e)}")
-        logger.error(f"Entity extraction error: {e}", run_id=state.workflow_id)
+        logger.error(f"Entity extraction error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -352,11 +352,11 @@ def _analyze_events_step(state: MASXState) -> MASXState:
             {"title": "Economic Summit", "articles": ["article3"]},
         ]
 
-        logger.info("Event analysis completed", run_id=state.workflow_id)
+        logger.info("Event analysis completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Event analysis failed: {str(e)}")
-        logger.error(f"Event analysis error: {e}", run_id=state.workflow_id)
+        logger.error(f"Event analysis error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -370,11 +370,11 @@ def _check_facts_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "check_facts"
         state.metadata["verified_hotspots"] = state.metadata.get("hotspots", [])
 
-        logger.info("Fact checking completed", run_id=state.workflow_id)
+        logger.info("Fact checking completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Fact checking failed: {str(e)}")
-        logger.error(f"Fact checking error: {e}", run_id=state.workflow_id)
+        logger.error(f"Fact checking error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -388,11 +388,11 @@ def _validate_output_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "validate_output"
         state.metadata["validation_passed"] = True
 
-        logger.info("Output validation completed", run_id=state.workflow_id)
+        logger.info("Output validation completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Output validation failed: {str(e)}")
-        logger.error(f"Output validation error: {e}", run_id=state.workflow_id)
+        logger.error(f"Output validation error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -406,11 +406,11 @@ def _store_memory_step(state: MASXState) -> MASXState:
         state.workflow.current_step = "store_memory"
         state.metadata["stored_to_memory"] = True
 
-        logger.info("Memory storage completed", run_id=state.workflow_id)
+        logger.info("Memory storage completed", run_id=state.workflow_id[0])
 
     except Exception as e:
         state.errors.append(f"Memory storage failed: {str(e)}")
-        logger.error(f"Memory storage error: {e}", run_id=state.workflow_id)
+        logger.error(f"Memory storage error: {e}", run_id=state.workflow_id[0])
 
     return state
 
@@ -426,10 +426,10 @@ def _finalize_workflow(state: MASXState) -> MASXState:
         state.workflow.failed = True
         logger.error(
             f"Daily workflow completed with errors: {state.errors}",
-            run_id=state.workflow_id,
+            run_id=state.workflow_id[0],
         )
     else:
-        logger.info("Daily workflow completed successfully", run_id=state.workflow_id)
+        logger.info("Daily workflow completed successfully", run_id=state.workflow_id[0])
 
     return state
 
@@ -442,7 +442,7 @@ def _detect_anomaly_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "detect_anomaly"
     state.metadata["anomalies_detected"] = []
 
-    logger.info("Anomaly detection completed", run_id=state.workflow_id)
+    logger.info("Anomaly detection completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -453,7 +453,7 @@ def _classify_anomaly_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "classify_anomaly"
     state.metadata["anomaly_classifications"] = []
 
-    logger.info("Anomaly classification completed", run_id=state.workflow_id)
+    logger.info("Anomaly classification completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -464,7 +464,7 @@ def _plan_resolution_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "plan_resolution"
     state.metadata["resolution_plan"] = {}
 
-    logger.info("Resolution planning completed", run_id=state.workflow_id)
+    logger.info("Resolution planning completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -475,7 +475,7 @@ def _execute_resolution_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "execute_resolution"
     state.metadata["resolution_executed"] = True
 
-    logger.info("Resolution execution completed", run_id=state.workflow_id)
+    logger.info("Resolution execution completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -486,7 +486,7 @@ def _visualize_result_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "visualize_result"
     state.workflow.completed = True
 
-    logger.info("Result visualization completed", run_id=state.workflow_id)
+    logger.info("Result visualization completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -498,7 +498,7 @@ def _detect_trigger_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "detect_trigger"
     state.metadata["trigger_detected"] = True
 
-    logger.info("Trigger detection completed", run_id=state.workflow_id)
+    logger.info("Trigger detection completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -509,7 +509,7 @@ def _delegate_tasks_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "delegate_tasks"
     state.metadata["tasks_delegated"] = True
 
-    logger.info("Task delegation completed", run_id=state.workflow_id)
+    logger.info("Task delegation completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -520,7 +520,7 @@ def _collect_results_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "collect_results"
     state.metadata["results_collected"] = True
 
-    logger.info("Result collection completed", run_id=state.workflow_id)
+    logger.info("Result collection completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -531,7 +531,7 @@ def _update_plan_step(state: MASXState) -> MASXState:
     state.workflow.current_step = "update_plan"
     state.metadata["plan_updated"] = True
 
-    logger.info("Plan update completed", run_id=state.workflow_id)
+    logger.info("Plan update completed", run_id=state.workflow_id[0])
     return state
 
 
@@ -544,7 +544,7 @@ def _re_execute_step(state: MASXState) -> MASXState:
         state.metadata.get("re_execution_count", 0) + 1
     )
 
-    logger.info("Re-execution completed", run_id=state.workflow_id)
+    logger.info("Re-execution completed", run_id=state.workflow_id[0])
     return state
 
 
