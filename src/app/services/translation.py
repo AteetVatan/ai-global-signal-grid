@@ -96,6 +96,7 @@ class TranslationService:
             source=self.source_lang, target=self.target_lang
         )
         self.nllb_translator = NLLBTranslatorSingleton()
+        self.logger = get_service_logger("TranslationService")
 
     def translate(
         self,
@@ -119,20 +120,20 @@ class TranslationService:
         tgt = target_lang or self.target_lang
 
         try:
+            hf_model_used = False
             # NLLB Path
             if src in ISO_TO_NLLB_MERGED and tgt in ISO_TO_NLLB_MERGED:
                 src_nllb = ISO_TO_NLLB_MERGED[src]
                 tgt_nllb = ISO_TO_NLLB_MERGED[tgt]
-                return self.nllb_translator.translate(text, src_nllb, tgt_nllb)
+                hf_model_used = True
+                return hf_model_used , self.nllb_translator.translate(text, src_nllb, tgt_nllb)
 
             # Google Fallback
-            return GoogleTranslator(source=src, target=tgt).translate(text)
+            return hf_model_used, GoogleTranslator(source=src, target=tgt).translate(text)
 
         except Exception as e:
             self.logger.error(f"Translation failed: {e}", exc_info=True)
-            return (
-                f"[TranslationError] Could not translate text from '{src}' to '{tgt}'"
-            )
+            return f"[TranslationError] Could not translate text from '{src}' to '{tgt}' with {self.nllb_translator.model_name if hf_model_used else 'google'}"
 
     async def translate_batch(
         self,
