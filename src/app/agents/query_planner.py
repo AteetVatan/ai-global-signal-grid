@@ -22,6 +22,7 @@ import json
 import re
 from typing import Any, List, Dict
 from ..core.querystate import QueryState, QueryTranslated
+from ..config.settings import get_settings
 
 
 class QueryPlanner(BaseAgent):
@@ -38,9 +39,10 @@ class QueryPlanner(BaseAgent):
     def __init__(self):
         """Initialize the Query Planner agent."""
         super().__init__("QueryPlanner")
-        self.llm_service = LLMService()
+        self.llm_service = LLMService.get_instance()  # singleton
         self.database_service = DatabaseService()
         self.logger = get_agent_logger("QueryPlanner")
+        self.settings = get_settings()
 
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         try:
@@ -99,8 +101,13 @@ class QueryPlanner(BaseAgent):
             # queries validation
             # queries = self.safe_flatten_queries(queries)
 
+            if self.settings.debug:
+                max_queries = 3
+            else:
+                max_queries = 1000
+
             query_states = []
-            for query in queries:
+            for query in queries[:max_queries]:
                 entities = query.get("entities", [])
                 query_text = query.get("query", "")
 
