@@ -23,6 +23,7 @@ import re
 from typing import Any, List, Dict
 from ..core.querystate import QueryState, QueryTranslated
 
+
 class QueryPlanner(BaseAgent):
     """
     Query Planner Agent for formulating optimized search queries.
@@ -40,13 +41,15 @@ class QueryPlanner(BaseAgent):
         self.llm_service = LLMService()
         self.database_service = DatabaseService()
         self.logger = get_agent_logger("QueryPlanner")
-        
+
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
-        try: 
+        try:
             # Prepare input data
             # Validate input
             if not self.validate_input(input_data):
-                raise AgentException("Invalid input: missing title or description or entities or domains")            
+                raise AgentException(
+                    "Invalid input: missing title or description or entities or domains"
+                )
 
             return self.plan_queries(input_data)
 
@@ -56,10 +59,7 @@ class QueryPlanner(BaseAgent):
         except Exception as e:
             return AgentResult(success=False, error=f"QueryPlanner failed: {str(e)}")
 
-    def plan_queries(
-        self,
-        input_data: Dict[str, Any]
-    ) -> AgentResult:
+    def plan_queries(self, input_data: Dict[str, Any]) -> AgentResult:
         """
         Plan search queries based on domain and context.
 
@@ -70,14 +70,14 @@ class QueryPlanner(BaseAgent):
             AgentResult: Contains planned queries for different sources
         """
         try:
-            
+
             # input_data = {
             #     "title": title,
             #     "description": description,
             #     "entities": entities,
             #     "domains": domains,
             # }
-            
+
             self.logger.info(
                 "Planning queries",
                 title=input_data.get("title", ""),
@@ -90,44 +90,45 @@ class QueryPlanner(BaseAgent):
             queries = self._generate_news_queries(input_data)
 
             # Generate GDELT queries
-            #gdelt_queries = self._generate_gdelt_queries(input_data)
-            #instead of this use all entity combinations
+            # gdelt_queries = self._generate_gdelt_queries(input_data)
+            # instead of this use all entity combinations
 
             # Check for recent similar queries to avoid duplicates
-            #self._check_query_history(news_queries + gdelt_queries)
-            
-            #queries validation
-            #queries = self.safe_flatten_queries(queries)            
-            
-            
+            # self._check_query_history(news_queries + gdelt_queries)
+
+            # queries validation
+            # queries = self.safe_flatten_queries(queries)
+
             query_states = []
             for query in queries:
                 entities = query.get("entities", [])
                 query_text = query.get("query", "")
-                
+
                 query_state = QueryState(
                     query=query_text,
-                    list_query_translated=[QueryTranslated(language="en", query_translated=query_text)],
+                    list_query_translated=[
+                        QueryTranslated(language="en", query_translated=query_text)
+                    ],
                     entities=entities,
                     language=["en"],
                     entity_languages={},
                     rss_urls=[],
-                    feed_entries=[])
-                query_states.append(query_state) 
-            
+                    feed_entries=[],
+                )
+                query_states.append(query_state)
 
             result = {
                 "query_states": query_states,
-                #"gdelt_queries": gdelt_queries,
+                # "gdelt_queries": gdelt_queries,
                 "domains": input_data.get("domains", []),
-                "query_count": len(queries) #+ len(gdelt_queries),
+                "query_count": len(queries),  # + len(gdelt_queries),
             }
 
             self.logger.info(
                 "Query planning completed",
                 query_count=result["query_count"],
                 queries=len(queries),
-                #gdelt_queries=len(gdelt_queries),
+                # gdelt_queries=len(gdelt_queries),
             )
 
             return AgentResult(
@@ -148,12 +149,12 @@ class QueryPlanner(BaseAgent):
         self, input_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Generate Google News RSS queries."""
-        
+
         title = input_data.get("title", "")
         description = input_data.get("description", "")
         entities = input_data.get("entities", [])
         domains = input_data.get("domains", [])
-        
+
         prompt = f"""
         You are a geopolitical news analyst. Your task is to generate 1000 search queries that people might use to find news related to a global flashpoint.
         Use diverse perspectives: military, economic, cultural, religious, tech, environmental, migration, ideological, legal, civilizational.
@@ -177,7 +178,7 @@ class QueryPlanner(BaseAgent):
         queries = []
         try:
             # Simple parsing - in production, use proper JSON parsing
-            parsed = json.loads(response)            
+            parsed = json.loads(response)
             queries = self.validate_and_fix_query_response(parsed)
         except Exception as e:
             self.logger.warning(f"Failed to parse LLM response: {e}")
@@ -196,12 +197,12 @@ class QueryPlanner(BaseAgent):
         self, input_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Generate GDELT API queries."""
-        
+
         title = input_data.get("title", "")
         description = input_data.get("description", "")
         entities = input_data.get("entities", [])
         domains = input_data.get("domains", [])
-        
+
         prompt = f"""
         Generate GDELT API search parameters for domains: {domains}
         Title: {title}
@@ -233,14 +234,16 @@ class QueryPlanner(BaseAgent):
                     description = item.get("description", "")
 
                     if isinstance(keywords, list) and keywords:
-                        queries.append({
-                            "keywords": keywords,
-                            "themes": themes,
-                            "locations": locations,
-                            "description": description,
-                            "domains": domains,
-                            "source": "gdelt"
-                        })
+                        queries.append(
+                            {
+                                "keywords": keywords,
+                                "themes": themes,
+                                "locations": locations,
+                                "description": description,
+                                "domains": domains,
+                                "source": "gdelt",
+                            }
+                        )
             else:
                 print("[ERROR] Parsed response is not a list.")
         except json.JSONDecodeError as e:
@@ -317,36 +320,39 @@ class QueryPlanner(BaseAgent):
         except Exception as e:
             self.logger.error(f"Query optimization failed: {e}")
             raise AgentException(f"Query optimization failed: {str(e)}")
-        
+
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
-            """
-            Validate input data for domain classification.
-            Args: input_data: Input data to validate
-            Returns: bool: True if input is valid
-            """
-            
-            # input_data = {
-            #     "title": title,
-            #     "description": description,
-            #     "entities": entities,
-            #     "domains": domains,
-            # }
-                        
-                        
-            if not isinstance(input_data, dict):
-                return False
+        """
+        Validate input data for query planner.
+        Args: input_data: Input data to validate
+        Returns: bool: True if input is valid
 
-            # Must have at least title or description
-            title = input_data.get("title", "")
-            description = input_data.get("description", "")
-            entities = input_data.get("entities", [])
-            domains = input_data.get("domains", [])
-            
-            return bool(title.strip() or description.strip()) or bool(entities) or bool(domains)
-        
-    
+        input_data = {
+            "title": title,
+            "description": description,
+            "entities": entities,
+            "domains": domains,
+        }
+        """
 
-    def is_valid_query_string(self,q: str, min_len: int = 4, max_len: int = 300) -> bool:
+        if not isinstance(input_data, dict):
+            return False
+
+        # Must have at least title or description
+        title = input_data.get("title", "")
+        description = input_data.get("description", "")
+        entities = input_data.get("entities", [])
+        domains = input_data.get("domains", [])
+
+        return (
+            bool(title.strip() or description.strip())
+            or bool(entities)
+            or bool(domains)
+        )
+
+    def is_valid_query_string(
+        self, q: str, min_len: int = 4, max_len: int = 300
+    ) -> bool:
         """
         Validates if a query string is meaningful and safe.
         """
@@ -368,13 +374,11 @@ class QueryPlanner(BaseAgent):
             return False  # optionally enforce minimum word count
 
         return True
-    
-
 
     def validate_and_fix_query_response(self, parsed: Any) -> List[Dict[str, Any]]:
         """
         Validate and fix a parsed query-entity list.
-        
+
         Args:
             parsed: A Python list of dicts (not a raw JSON string)
 
@@ -401,28 +405,19 @@ class QueryPlanner(BaseAgent):
                 raw_entities = []
 
             # Clean each entity string
-            entities = [str(e).strip() for e in raw_entities if isinstance(e, str) and e.strip()]
+            entities = [
+                str(e).strip() for e in raw_entities if isinstance(e, str) and e.strip()
+            ]
 
-            cleaned.append({
-                "query": query_str,
-                "entities": entities
-            })
+            cleaned.append({"query": query_str, "entities": entities})
 
         return cleaned
 
-
-        
-        
-        
-        
-        
-        
-
-    def safe_flatten_queries(self,queries):
+    def safe_flatten_queries(self, queries):
         """
         Safely flatten and validate a list of queries that may include strings or lists of strings.
         Returns a cleaned list of valid, unique queries.
-        
+
         queries = [
             {
                 "query": "Iran drone strikes near Israel border",
@@ -433,14 +428,14 @@ class QueryPlanner(BaseAgent):
                 "entities": ["Russia", "Ukraine"]
             }
             ]
-        
+
         """
         flat_queries = []
 
         for q in queries:
             entities = q.get("entities", [])
             query = q.get("query", "")
-            
+
             if isinstance(query, str):
                 cleaned = query.strip()
                 if self.is_valid_query_string(cleaned):

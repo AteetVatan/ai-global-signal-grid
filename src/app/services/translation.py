@@ -35,6 +35,7 @@ from ..config.logging_config import get_service_logger
 from ..core.singleton import NLLBTranslatorSingleton
 from ..constants import ISO_TO_NLLB_MERGED
 
+
 class TranslationProvider(Enum):
     """Supported translation providers."""
 
@@ -42,6 +43,7 @@ class TranslationProvider(Enum):
     DEEPL = "deepl"
     LOCAL = "local"
     NLLB = "nllb"
+
 
 @dataclass
 class TranslationRequest:
@@ -99,7 +101,7 @@ class TranslationService:
         self,
         text: str,
         source_lang: Optional[str] = None,
-        target_lang: Optional[str] = None
+        target_lang: Optional[str] = None,
     ) -> str:
         """
         Translate text from source_lang to target_lang using NLLB if available,
@@ -128,7 +130,9 @@ class TranslationService:
 
         except Exception as e:
             self.logger.error(f"Translation failed: {e}", exc_info=True)
-            return f"[TranslationError] Could not translate text from '{src}' to '{tgt}'"
+            return (
+                f"[TranslationError] Could not translate text from '{src}' to '{tgt}'"
+            )
 
     async def translate_batch(
         self,

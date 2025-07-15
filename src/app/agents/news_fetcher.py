@@ -63,9 +63,7 @@ class NewsFetcher(BaseAgent):
                     continue
 
                 # Fetch articles for this query
-                articles = self._fetch_articles_for_query(
-                    query_text, max_articles
-                )
+                articles = self._fetch_articles_for_query(query_text, max_articles)
                 all_articles.extend(articles)
 
                 self.logger.info(

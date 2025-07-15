@@ -4,11 +4,13 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from threading import Lock
 from typing import Dict
 
+
 class NLLBTranslatorSingleton:
     """
     Singleton class for loading and serving the NLLB-200 multilingual translation model.
     Supports efficient reuse across threads, agents, or pipelines.
     """
+
     _instance = None
     _lock: Lock = Lock()
 

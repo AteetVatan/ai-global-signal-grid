@@ -137,15 +137,14 @@ class DatabaseService:
             # Supabase configuration
             if not self.settings.supabase_url or not self.settings.supabase_anon_key:
                 raise ConfigurationException("Supabase URL and key are required")
-            
+
             # Database Configuration (Supabase)
             # SUPABASE_URL=https://your-project.supabase.co
             # SUPABASE_ANON_KEY=your_supabase_anon_key_here
             # SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
             # SUPABASE_DB_PASSWORD=your_database_password_here
             # SUPABASE_DB_URL=your_database_connection_url
-            
-            
+
             self._connection_params = {
                 "supabase_url": self.settings.supabase_url,
                 "supabase_key": self.settings.supabase_anon_key,
@@ -153,20 +152,16 @@ class DatabaseService:
                 "max_connections": self.settings.database_max_connections or 10,
                 "min_connections": self.settings.database_min_connections or 1,
             }
-            
-            #test connection
+
+            # test connection
             # import asyncio
             # asyncio.run(self.connect())
-            
-            
 
             self.logger.info("Database connection parameters initialized")
 
         except Exception as e:
             self.logger.error(f"Failed to initialize database connection: {e}")
             raise DatabaseException(f"Database initialization failed: {str(e)}")
-
-
 
     async def connect(self):
         """Establish database connections."""
@@ -181,13 +176,15 @@ class DatabaseService:
                 self._connection_params["supabase_key"],
                 options=options,
             )
-            
+
             # Validate and establish PostgreSQL pool
             database_url = self._connection_params.get("database_url")
             if database_url:
                 if not self.is_valid_postgres_url(database_url):
-                    raise ConfigurationException(f"Invalid PostgreSQL connection URL: {database_url}")
-                
+                    raise ConfigurationException(
+                        f"Invalid PostgreSQL connection URL: {database_url}"
+                    )
+
                 # Initialize connection pool for direct PostgreSQL access
                 self.pool = await asyncpg.create_pool(
                     database_url,
@@ -764,6 +761,6 @@ class DatabaseService:
                 "timestamp": datetime.utcnow().isoformat(),
                 "error": str(e),
             }
-            
+
     def is_valid_postgres_url(self, url: str) -> bool:
-        return bool(re.match(r'^postgres(?:ql)?://.+:.+@.+:\d+/.+', url))
+        return bool(re.match(r"^postgres(?:ql)?://.+:.+@.+:\d+/.+", url))

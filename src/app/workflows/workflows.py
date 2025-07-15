@@ -425,7 +425,8 @@ def _finalize_workflow(state: MASXState) -> MASXState:
     if state.errors:
         state.workflow.failed = True
         logger.error(
-            f"Daily workflow completed with errors: {state.errors}", run_id=state.workflow_id
+            f"Daily workflow completed with errors: {state.errors}",
+            run_id=state.workflow_id,
         )
     else:
         logger.info("Daily workflow completed successfully", run_id=state.workflow_id)

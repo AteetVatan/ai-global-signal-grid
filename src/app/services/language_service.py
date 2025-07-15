@@ -11,7 +11,12 @@ import requests
 import pycountry
 from typing import List, Dict, Optional
 from functools import lru_cache
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+from tenacity import (
+    retry,
+    wait_exponential,
+    stop_after_attempt,
+    retry_if_exception_type,
+)
 from ..constants import ISO_REGION_LANGUAGES
 from ..core.singleton import ThreadSafeRateLimiter
 
@@ -21,14 +26,11 @@ _RESTCOUNTRIES_URL = "https://restcountries.com/v3.1/alpha/{code}"
 _REQUEST_TIMEOUT = 2  # seconds
 
 
-
-
 class LanguageServiceError(Exception):
     """Custom exception for language service failures."""
+
     def __init__(self, message: str):
         super().__init__(f"[LanguageServiceError] {message}")
-    
-
 
 
 class LanguageService:
@@ -39,7 +41,7 @@ class LanguageService:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(6),
         retry=retry_if_exception_type(requests.RequestException),
-        reraise=True  # <- optional: raise last exception after retries
+        reraise=True,  # <- optional: raise last exception after retries
     )
     def get_languages_for_country_code(cls, country_code: str) -> List[str]:
         """
@@ -68,7 +70,7 @@ class LanguageService:
             response = requests.get(
                 _RESTCOUNTRIES_URL.format(code=code),
                 timeout=_REQUEST_TIMEOUT,
-                headers={"User-Agent": "MASX-AI/1.0"}
+                headers={"User-Agent": "MASX-AI/1.0"},
             )
             response.raise_for_status()
 
@@ -116,9 +118,8 @@ class LanguageService:
             languages.extend(from_country)
         except LookupError:
             pass
-        
+
         return languages
-    
 
     @classmethod
     def get_languages_for_entities(cls, entities: List[str]) -> List[str]:

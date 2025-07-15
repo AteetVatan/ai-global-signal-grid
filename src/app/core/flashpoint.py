@@ -1,13 +1,19 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, RootModel
 from ..core.querystate import QueryState
-#from pydantic_core import RootModel
+
+# from pydantic_core import RootModel
+
 
 class FlashpointItem(BaseModel):
     title: str = Field(..., min_length=1, description="Title of the flashpoint event")
-    description: str = Field(..., min_length=1, description="Brief description of the event")
+    description: str = Field(
+        ..., min_length=1, description="Brief description of the event"
+    )
     entities: List[str] = Field(..., description="List of named entities involved")
-    domains: Optional[List[str]] = Field(None, description="List of domains the event belongs to")
+    domains: Optional[List[str]] = Field(
+        None, description="List of domains the event belongs to"
+    )
     queries: Optional[List[QueryState]] = Field(None, description="List of queries")
 
     @field_validator("title", "description", mode="before")
@@ -16,50 +22,57 @@ class FlashpointItem(BaseModel):
         if not isinstance(v, str) or not v.strip():
             raise ValueError("Must be a non-empty, non-whitespace string")
         return v.strip()
-    
+
     @field_validator("entities", mode="before")
     def ensure_non_empty_entities(cls, value):
-        if not value or not isinstance(value, list) or any(not isinstance(e, str) for e in value):
+        if (
+            not value
+            or not isinstance(value, list)
+            or any(not isinstance(e, str) for e in value)
+        ):
             raise ValueError("Entities must be a list of non-empty strings")
         return value
-    
+
     @field_validator("domains", mode="before")
     @classmethod
     def validate_domains(cls, value):
         if value is None:
-            return value  #Skip validation
-        if not isinstance(value, list) or any(not isinstance(d, str) or not d.strip() for d in value):
+            return value  # Skip validation
+        if not isinstance(value, list) or any(
+            not isinstance(d, str) or not d.strip() for d in value
+        ):
             raise ValueError("Domains must be a list of non-empty strings")
         return [d.strip() for d in value]
 
 
-
-
 class FlashpointDataset(RootModel[List[FlashpointItem]]):
-    root: List[FlashpointItem] = Field(default_factory=list) # to avoid FlashpointDataset(root=[])
-    
+    root: List[FlashpointItem] = Field(
+        default_factory=list
+    )  # to avoid FlashpointDataset(root=[])
+
     @classmethod
     def from_raw(cls, raw):
         if not raw:
             return cls()
-        #Fix: Ensure we're working with list of dicts
+        # Fix: Ensure we're working with list of dicts
         if isinstance(raw[0], FlashpointItem):
             raw = [fp.model_dump() for fp in raw]
         return cls.model_validate(raw)
-    
+
     def __iter__(self):
         return iter(self.root)
 
-    def __len__(self):  
+    def __len__(self):
         return len(self.root)
-    
+
     def to_list(self) -> List[dict]:
         return [item.model_dump() for item in self.root]
 
     def to_json(self) -> str:
         import json
-        return json.dumps(self.to_list(), ensure_ascii=False, indent=2)    
-    
+
+        return json.dumps(self.to_list(), ensure_ascii=False, indent=2)
+
     def append(self, item: FlashpointItem):
         if not isinstance(item, FlashpointItem):
             raise TypeError("Only FlashpointItem instances can be added.")

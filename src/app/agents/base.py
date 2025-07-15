@@ -98,7 +98,7 @@ class BaseAgent(ABC):
             self.name,
             "start_execution",
             parameters=input_data,
-            workflow_id= workflow_id,
+            workflow_id=workflow_id,
         )
 
         try:

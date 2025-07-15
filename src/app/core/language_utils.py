@@ -1,5 +1,6 @@
 import pycountry
 
+
 class LanguageUtils:
     """Utility class for validating ISO 639-1 language codes."""
 

@@ -21,8 +21,9 @@ from ..services import FeedParserService
 from datetime import datetime
 from ..config.logging_config import get_agent_logger
 
+
 class GoogleRssAgent(BaseAgent):
-  
+
     def __init__(self):
         """Initialize the Google RSS Agent."""
         super().__init__(
@@ -31,8 +32,7 @@ class GoogleRssAgent(BaseAgent):
         )
         self.feed_parser_service = FeedParserService()
         self.logger = get_agent_logger("GoogleRssAgent")
-        
-        
+
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
         Execute Google RSS Agent.
@@ -42,9 +42,11 @@ class GoogleRssAgent(BaseAgent):
         try:
             # Validate input
             if not self.validate_input(input_data):
-                raise AgentException("Invalid input: missing title or description")
+                raise AgentException("Invalid input: missing queries")
 
-            queries = [QueryState.model_validate(q) for q in input_data.get("queries", [])]
+            queries = [
+                QueryState.model_validate(q) for q in input_data.get("queries", [])
+            ]
             rss_urls = []
             feed_entries = []
             for query in queries:
@@ -53,21 +55,17 @@ class GoogleRssAgent(BaseAgent):
                 rss_urls.extend(query.rss_urls)
                 feed_entries.extend(query.feed_entries)
 
-            
             result = {
                 "queries": queries,
                 "rss_urls": rss_urls,
                 "feed_entries": feed_entries,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
-        
+
             return AgentResult(
                 success=True,
                 data=result,
-                metadata={
-                    "agent": self.name,
-                    "timestamp": datetime.utcnow()
-                },
+                metadata={"agent": self.name, "timestamp": datetime.utcnow()},
             )
         except Exception as e:
             return AgentResult(
@@ -75,29 +73,31 @@ class GoogleRssAgent(BaseAgent):
                 error=f"Google RSS Agent failed: {str(e)}",
                 metadata={"exception_type": type(e).__name__},
             )
-    
+
     def _get_rss_urls(self, query: QueryState) -> List[str]:
-            """
-            Build Google News RSS feed URLs for all translated queries.
-            """
-            rss_urls = []
+        """
+        Build Google News RSS feed URLs for all translated queries.
+        """
+        rss_urls = []
 
-            for translated in query.list_query_translated:
-                lang = translated.language
-                query_text = translated.query_translated
+        for translated in query.list_query_translated:
+            lang = translated.language
+            query_text = translated.query_translated
 
-                query_encoded = self._get_query_encoded(query_text)
-                alpha2 = self._get_alpha2_for_lang(lang, query.entity_languages)
-                ceid = self._get_ceid(lang, alpha2)
+            query_encoded = self._get_query_encoded(query_text)
+            alpha2 = self._get_alpha2_for_lang(lang, query.entity_languages)
+            ceid = self._get_ceid(lang, alpha2)
 
-                url = f"https://news.google.com/rss/search?q={query_encoded}&hl={lang.lower()}"
-                if ceid:
-                    url += f"&ceid={ceid}"
+            url = f"https://news.google.com/rss/search?q={query_encoded}&hl={lang.lower()}"
+            if ceid:
+                url += f"&ceid={ceid}"
 
-                rss_urls.append(url)
-            return list(set(rss_urls))
-        
-    def _get_alpha2_for_lang(self, lang: str, entity_languages: Dict[str, List[str]]) -> Optional[str]:
+            rss_urls.append(url)
+        return list(set(rss_urls))
+
+    def _get_alpha2_for_lang(
+        self, lang: str, entity_languages: Dict[str, List[str]]
+    ) -> Optional[str]:
         """
         Get the alpha-2 code for a given language from entity-language mapping.
         """
@@ -118,20 +118,25 @@ class GoogleRssAgent(BaseAgent):
         """
         if alpha2:
             return f"{alpha2.upper()}:{lang.upper()}"
-        return None     
-        
-    
+        return None
 
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
-        Validate input data for domain classification.
+        Validate input data for google rss agent.
         Args: input_data: Input data to validate
         Returns: bool: True if input is valid
+
+          input_data = {
+                "queries": flashpoint.queries, # list[QueryState]
+            }
+
         """
         if not isinstance(input_data, dict):
             return False
-
-        # Must have at least title or description
-        title = input_data.get("title", "")
-        description = input_data.get("description", "")
-        return bool(title.strip() or description.strip())
+        queries = input_data.get("queries", [])
+        if not isinstance(queries, list):
+            return False
+        for query in queries:
+            if not isinstance(query, QueryState):
+                return False
+        return True

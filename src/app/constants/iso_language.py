@@ -7,7 +7,6 @@ ISO_REGION_LANGUAGES = {
     "hezbollah": ["ar", "fa"],
     "yemen": ["ar"],
     "levant": ["ar", "en", "he"],
-
     # South Asia
     "balochistan": ["ur", "fa"],
     "kashmir": ["ur", "hi", "en"],
@@ -16,14 +15,12 @@ ISO_REGION_LANGUAGES = {
     "sri lanka": ["si", "ta", "en"],
     "sindh": ["sd", "ur"],
     "bangladesh": ["bn", "en"],
-
     # Central & East Asia
     "tibet": ["zh"],
     "xinjiang": ["zh"],
     "hong kong": ["zh", "en"],
     "taiwan": ["zh", "en"],
     "mongolia": ["mn"],
-
     # Africa
     "somaliland": ["so", "en", "ar"],
     "darfur": ["ar", "en"],
@@ -31,7 +28,6 @@ ISO_REGION_LANGUAGES = {
     "cabinda": ["pt"],
     "eritrea": ["ar"],
     "tigray": ["am"],
-
     # Europe
     "catalonia": ["ca", "es", "en"],
     "basque country": ["eu", "es", "fr"],
@@ -48,12 +44,10 @@ ISO_REGION_LANGUAGES = {
     "greenland": ["da"],
     "amazon": ["pt", "es"],
     "chiapas": ["es"],
-    
     # Oceania / Pacific
     "papua": ["id"],
     "caledonia": ["fr"],
     "bougainville": ["en"],
-
     # Russia / Post-Soviet
     "chechnya": ["ru"],
     "dagestan": ["ru"],
@@ -61,7 +55,6 @@ ISO_REGION_LANGUAGES = {
     "abkhazia": ["ru", "ka"],
     "ossetia": ["ru", "ka"],
     "kaliningrad": ["ru", "de", "pl"],
-
     # Pan-Identity / Civilization Zones
     "turk": ["tr", "az", "tk", "kk", "uz"],
     "arab": ["ar"],
@@ -78,12 +71,10 @@ ISO_REGION_LANGUAGES = {
     "islamic": ["ar", "fa", "ur"],
     "buddhist": ["zh", "th", "si"],
     "uralic": ["fi", "et", "hu"],
-
     # Stateless Nations
     "kurds": ["ku", "tr", "ar", "fa"],
     "rohingya": ["my"],
     "uyghurs": ["zh"],
     "tamils": ["ta", "en"],
     "tibetans": ["bo", "en"],
-
 }

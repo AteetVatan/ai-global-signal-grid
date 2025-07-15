@@ -377,7 +377,8 @@ class TestMASXOrchestrator:
             mock_workflow = Mock()
             mock_workflow.compile.return_value = Mock()
             mock_workflow.compile.return_value.invoke.return_value = MASXState(
-                workflow_id="test-run", workflow=WorkflowState(completed=True, failed=False)
+                workflow_id="test-run",
+                workflow=WorkflowState(completed=True, failed=False),
             )
             mock_create.return_value = mock_workflow
 

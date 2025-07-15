@@ -35,7 +35,7 @@ class Translator(BaseAgent):
         super().__init__("Translator")
         self.translation_service = TranslationService()
         self.logger = get_agent_logger("Translator")
-        
+
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
         Execute method required by BaseAgent. Routes translation request.
@@ -46,25 +46,35 @@ class Translator(BaseAgent):
         Returns:
             AgentResult: Translation result
         """
-        try:    
+        try:
+            if not self.validate_input(input_data):
+                raise AgentException("Invalid input: missing queries")
+
             input_queries = input_data.get("queries", [])
-            queries: List[QueryState] = [QueryState.model_validate(q) for q in input_queries]
-            
+            queries: List[QueryState] = [
+                QueryState.model_validate(q) for q in input_queries
+            ]
+
             translated_items = []
             failed_translations = []
-            for query in queries:                                
-                for lang in query.language:  
+            for query in queries:
+                for lang in query.language:
                     try:
                         if lang == "en" or lang == "uk":
                             translated_text = query.query
                         else:
-                            translated_text = self.translation_service.translate(target_lang=lang, source_lang="en",text=query.query)
-                            self.logger.info(f"Translated query: {query.query} to {lang} with text: {translated_text}")
-                            translated_items.append(translated_text)      
-                            query_translated = QueryTranslated(language=lang, query_translated=translated_text)
+                            translated_text = self.translation_service.translate(
+                                target_lang=lang, source_lang="en", text=query.query
+                            )
+                            self.logger.info(
+                                f"Translated query: {query.query} to {lang} with text: {translated_text}"
+                            )
+                            translated_items.append(translated_text)
+                            query_translated = QueryTranslated(
+                                language=lang, query_translated=translated_text
+                            )
                             query.list_query_translated.append(query_translated)
-                        
-                            
+
                     except Exception as e:
                         self.logger.warning(f"Translation failed for item: {e}")
                         failed_item = {
@@ -74,7 +84,6 @@ class Translator(BaseAgent):
                             "error": str(e),
                         }
                         failed_translations.append(failed_item)
-                    
 
             result = {
                 "queries": queries,
@@ -84,21 +93,17 @@ class Translator(BaseAgent):
                     "successful": len(translated_items),
                     "failed": len(failed_translations),
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
-        
+
             return AgentResult(
                 success=True,
                 data=result,
-                metadata={
-                    "agent": self.name,
-                    "timestamp": datetime.utcnow()
-                },
+                metadata={"agent": self.name, "timestamp": datetime.utcnow()},
             )
         except Exception as e:
             self.logger.error(f"Translation failed: {e}")
             raise AgentException(f"Translation failed: {str(e)}")
-
 
     def batch_translate(
         self,
@@ -287,3 +292,24 @@ class Translator(BaseAgent):
         except Exception as e:
             self.logger.error(f"Language detection failed: {e}")
             raise AgentException(f"Language detection failed: {str(e)}")
+
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+        """
+        Validate input data for translator agent.
+        Args: input_data: Input data to validate
+        Returns: bool: True if input is valid
+
+          input_data = {
+                "queries": flashpoint.queries, # list[QueryState]
+            }
+
+        """
+        if not isinstance(input_data, dict):
+            return False
+        queries = input_data.get("queries", [])
+        if not isinstance(queries, list):
+            return False
+        for query in queries:
+            if not isinstance(query, QueryState):
+                return False
+        return True

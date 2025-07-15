@@ -35,120 +35,121 @@ class LanguageAgent(BaseAgent):
         """Initialize the Entity Extractor agent."""
         super().__init__("EntityExtractor")
         self.logger = get_agent_logger("EntityExtractor")
-        #self.nlp_eng = SpacySingleton.get(SpaCyModelName.EN_CORE_WEB_SM)
+        # self.nlp_eng = SpacySingleton.get(SpaCyModelName.EN_CORE_WEB_SM)
         self.country_normalizer = CountryNormalizer()
-        
+
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
         Synchronous entrypoint to extract entities (required by BaseAgent).
-        
+
         Args:
             input_data: Dictionary with a list under 'items' key
-        
+
         Returns:
             AgentResult with extracted entities
         """
         try:
-            queries : List[QueryState] = input_data.get("queries", [])
+            if not self.validate_input(input_data):
+                raise AgentException("Invalid input: missing queries")
+
+            queries: List[QueryState] = input_data.get("queries", [])
             if not isinstance(queries, list):
-                raise AgentException("Missing or invalid 'queries' list for entity extraction")
+                raise AgentException(
+                    "Missing or invalid 'queries' list for entity extraction"
+                )
 
             self.logger.info(f"Extracting entities from {len(queries)} queries")
 
             for query in queries:
                 entities = query.entities
-                #get all languages associated with the entities
-                languages, entity_languages = self._get_languages_from_entities(entities)
+                # get all languages associated with the entities
+                languages, entity_languages = self._get_languages_from_entities(
+                    entities
+                )
                 query.language = languages
                 query.entity_languages = entity_languages
 
             self.logger.info("Language extraction completed", total_items=len(queries))
 
-            result = {
-                "queries": queries
-            }
-        
+            result = {"queries": queries}
+
             return AgentResult(
                 success=True,
                 data=result,
-                metadata={
-                    "agent": self.name,
-                    "timestamp": datetime.utcnow()
-                },
-            )        
-            
+                metadata={"agent": self.name, "timestamp": datetime.utcnow()},
+            )
 
         except Exception as e:
             self.logger.error(f"Entity extraction failed: {e}")
             return AgentResult(
                 success=False,
                 error=f"Entity extraction failed: {str(e)}",
-                metadata={"agent": self.name}
+                metadata={"agent": self.name},
             )
 
-    def _get_languages_from_entities(self, entities: List[str]) -> Tuple[List[str], Dict[str, List[str]]]:
+    def _get_languages_from_entities(
+        self, entities: List[str]
+    ) -> Tuple[List[str], Dict[str, List[str]]]:
         """Get all languages associated with the entities."""
         try:
             language_list = []
             entity_languages = {}
             for entity in entities:
-            #get the language of the entity
+                # get the language of the entity
                 country = self.country_normalizer.normalize(entity)
-                #get the alpha2 code of the country
+                # get the alpha2 code of the country
                 if not country:
-                    country = self.country_normalizer.get_coco_country_name(entity, return_all=True)
-                
-                
+                    country = self.country_normalizer.get_coco_country_name(
+                        entity, return_all=True
+                    )
+
                 if country:
-                    alpha2 = self.country_normalizer.country_name_to_alpha2(country)            
+                    alpha2 = self.country_normalizer.country_name_to_alpha2(country)
                     if alpha2:
-                        #get the language of the country
-                        language = LanguageService.get_languages_for_country_code(alpha2)                
+                        # get the language of the country
+                        language = LanguageService.get_languages_for_country_code(
+                            alpha2
+                        )
                         language_list.extend(language)
-                        
+
                         if alpha2 not in entity_languages:
                             entity_languages[alpha2] = []
                         entity_languages[alpha2].extend(language)
-                        
-                        
+
                         continue
-                        
-                #get the language of the entity
-                language = LanguageService.get_languages_for_entity(entity)                
-                language_list.extend(language)            
+
+                # get the language of the entity
+                language = LanguageService.get_languages_for_entity(entity)
+                language_list.extend(language)
                 if entity not in entity_languages:
                     entity_languages[entity] = []
                 entity_languages[entity].extend(language)
-                
+
         except Exception as e:
             self.logger.error(f"Error getting languages from entities: {e}")
             return []
-                
-        #every language_list must have english "en" the default
+
+        # every language_list must have english "en" the default
         if "en" not in language_list:
             language_list.append("en")
-    
-        #remove duplicates use dict key to remove duplicates
-        language_list = list(dict.fromkeys(language_list))  
-        
-        #replace if keys in GOOGLE_TRANSLATE_VARIANTS with values
-        #append GOOGLE_TRANSLATE_VARIANTS[lang] to language_list if lang in GOOGLE_TRANSLATE_VARIANTS
+
+        # remove duplicates use dict key to remove duplicates
+        language_list = list(dict.fromkeys(language_list))
+
+        # replace if keys in GOOGLE_TRANSLATE_VARIANTS with values
+        # append GOOGLE_TRANSLATE_VARIANTS[lang] to language_list if lang in GOOGLE_TRANSLATE_VARIANTS
         google_variants = []
         for lang in language_list:
             if lang in GOOGLE_TRANSLATE_VARIANTS:
                 google_variants.extend(GOOGLE_TRANSLATE_VARIANTS[lang])
         language_list.extend(google_variants)
-        language_list = list(dict.fromkeys(language_list))       
-       
-              
-        #sort the languages
-        language_list.sort()        
-        #return the languages
+        language_list = list(dict.fromkeys(language_list))
+
+        # sort the languages
+        language_list.sort()
+        # return the languages
         return language_list, entity_languages
-    
-    
-    
-    
+
     def _extract_entities_from_text(self, text: str) -> List[Dict[str, Any]]:
         """Stub entity extraction from text (replace with real NER in production)."""
         # In production, use spaCy or another NER library
@@ -163,27 +164,24 @@ class LanguageAgent(BaseAgent):
             if word.istitle() and len(word) > 2:
                 entities.append({"text": word, "type": "UNKNOWN"})
         return entities
-    
-    def __ensure_spacy_model(model_name: str):
+
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
-        Ensure a spaCy model is installed and return the loaded nlp object.
-        
-        Args:
-            model_name: e.g. "en_core_web_sm"
-        
-        Returns:
-            The loaded spaCy Language pipeline.
+        Validate input data for language agent.
+        Args: input_data: Input data to validate
+        Returns: bool: True if input is valid
+
+          input_data = {
+                "queries": flashpoint.queries, # list[QueryState]
+            }
+
         """
-        try:
-            # Try to import the model package
-            importlib.import_module(model_name)
-        except ImportError:
-            # If that fails, download it via the spacy CLI
-            print(f"Model {model_name} not found. Downloading...")
-            subprocess.run(
-                [sys.executable, "-m", "spacy", "download", model_name],
-                check=True
-            )
-        # Finally, load and return the pipeline
-        import spacy
-        return spacy.load(model_name)
+        if not isinstance(input_data, dict):
+            return False
+        queries = input_data.get("queries", [])
+        if not isinstance(queries, list):
+            return False
+        for query in queries:
+            if not isinstance(query, QueryState):
+                return False
+        return True

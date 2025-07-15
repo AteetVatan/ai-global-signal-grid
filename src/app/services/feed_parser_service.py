@@ -10,6 +10,7 @@ from ..config.logging_config import get_logger
 
 logger = get_logger("FeedParserService")
 
+
 class FeedParserService:
     def __init__(self, min_results: int = 2):
         self.min_results = min_results
@@ -45,7 +46,9 @@ class FeedParserService:
         for entry in entries:
             seen_dt = self._parse_date(entry.get("published", ""))
 
-            if seen_dt and seen_dt < datetime.now(seen_dt.tzinfo) - timedelta(days=self.recent_days):# from last 24 hour
+            if seen_dt and seen_dt < datetime.now(seen_dt.tzinfo) - timedelta(
+                days=self.recent_days
+            ):  # from last 24 hour
                 continue  # Skip old entries
 
             feed_entry = FeedEntry(
@@ -54,9 +57,9 @@ class FeedParserService:
                 seendate=entry.get("published", ""),
                 domain={
                     "title": entry.get("source", {}).get("title", ""),
-                    "href": entry.get("source", {}).get("href", "")
+                    "href": entry.get("source", {}).get("href", ""),
                 },
-                description=entry.get("summary", "")
+                description=entry.get("summary", ""),
             )
             valid_entries.append(feed_entry)
 
@@ -67,7 +70,7 @@ class FeedParserService:
         Main entry point for LangGraph node. Enriches each query with valid recent RSS entries.
         """
         feed_entries = []
-        
+
         for rss_url in query_state.rss_urls:
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 results = list(executor.map(self._fetch_rss, rss_url))
@@ -79,6 +82,8 @@ class FeedParserService:
                     feed_entries.extend(processed)
 
             query_state.feed_entries = feed_entries
-            logger.info(f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries")
+            logger.info(
+                f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries"
+            )
 
         return query_state

@@ -81,7 +81,7 @@ class DomainClassifier(BaseAgent):
             domains = self._parse_domains(response)
 
             # Validate domains do we need this? as llm can provide us with extra domains
-            #or should we stick to the domains defined by us?
+            # or should we stick to the domains defined by us?
             validated_domains = self._validate_domains(domains)
 
             return AgentResult(

@@ -28,7 +28,6 @@ from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
 
 
-
 class FlashpointLLMAgent(BaseAgent):
     """
     Agent for detecting global geopolitical flashpoints using LLM reasoning.
@@ -368,7 +367,9 @@ class FlashpointLLMAgent(BaseAgent):
             )
 
             # Validate JSON response
-            validated_flashpoints : FlashpointDataset = self._validate_json_response(response)
+            validated_flashpoints: FlashpointDataset = self._validate_json_response(
+                response
+            )
 
             if validated_flashpoints:
                 self.logger.info(
@@ -467,7 +468,11 @@ class FlashpointLLMAgent(BaseAgent):
 
             # remove all flashpoints with no geo entities
             existing_flashpoints = FlashpointDataset(
-                [fp for fp in existing_flashpoints if self.get_geo_entities(fp.entities)]
+                [
+                    fp
+                    for fp in existing_flashpoints
+                    if self.get_geo_entities(fp.entities)
+                ]
             )
 
         processed = existing_flashpoints

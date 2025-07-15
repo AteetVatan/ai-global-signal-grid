@@ -53,11 +53,10 @@ class CountryNormalizer:
             except LookupError:
                 pass
 
-        
-        #step 5: try to find the country in the pycountry
+        # step 5: try to find the country in the pycountry
 
         return None
-    
+
     def country_name_to_alpha2(self, country_name: str) -> str:
         """
         Convert a country name to its ISO 3166-1 alpha-2 code.
@@ -77,8 +76,10 @@ class CountryNormalizer:
             return matches[0].alpha_2 if matches else None
         except LookupError:
             return ""
-    
-    def get_coco_country_name(self, name: str, return_all: bool = False) -> Optional[str]:
+
+    def get_coco_country_name(
+        self, name: str, return_all: bool = False
+    ) -> Optional[str]:
         """Get the country name from the coco converter."""
         coco_converted = self.cc.convert(name, to="name_short", not_found=None)
         if (
@@ -89,10 +90,9 @@ class CountryNormalizer:
             if return_all:
                 return coco_converted
             elif coco_converted.lower() in self.valid_names:
-                return coco_converted            
-          
+                return coco_converted
+
         return None
-    
 
     def is_country(self, name: str) -> bool:
         """Return True if the name can be normalized to a known country."""

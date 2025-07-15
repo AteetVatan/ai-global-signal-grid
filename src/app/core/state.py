@@ -13,7 +13,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from app.core.flashpoint import FlashpointDataset, FlashpointItem
 
-    
+
 class AgentState(BaseModel):
     """
     State for an agent in the workflow.
@@ -66,7 +66,7 @@ class MASXState(BaseModel):
     Includes run metadata, agent states, workflow state, and errors.
     """
 
-    workflow_id: Optional[str] = None 
+    workflow_id: Optional[str] = None
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Run start timestamp (UTC)"
     )
@@ -79,8 +79,9 @@ class MASXState(BaseModel):
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional run metadata (config, env, etc.)"
-    )    
-    #put current_flashpoint and all_flashpoints in data
+    )
+    # put current_flashpoint and all_flashpoints in data
     data: Dict[str, Any] = Field(
-        default_factory=dict, description="Data for the workflow" # current_flashpoint and all_flashpoints
+        default_factory=dict,
+        description="Data for the workflow",  # current_flashpoint and all_flashpoints
     )
