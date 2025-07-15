@@ -73,8 +73,9 @@ async def execute_workflow(request: WorkflowRequest, background_tasks: Backgroun
             workflow_type=request.workflow_type, input_data=request.input_data
         )
 
+        workflow_id = result.workflow_id[0]
         response = WorkflowResponse(
-            workflow_id=result.workflow_id,
+            workflow_id=workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type=request.workflow_type,
             execution_time=result.workflow.execution_time or 0.0,
@@ -91,7 +92,7 @@ async def execute_workflow(request: WorkflowRequest, background_tasks: Backgroun
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Workflow execution completed: {result.workflow_id}")
+        logger.info(f"Workflow execution completed: {workflow_id}")
         return response
 
     except Exception as e:
@@ -120,8 +121,9 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
         input_data = request.input_data if request else None
         result = orchestrator.run_daily_workflow(input_data=input_data)
 
+        workflow_id = result.workflow_id[0]
         response = WorkflowResponse(
-            workflow_id=result.workflow_id,
+            workflow_id=workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type="daily",
             execution_time=result.workflow.execution_time or 0.0,
@@ -138,7 +140,7 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Daily workflow execution completed: {result.workflow_id}")
+        logger.info(f"Daily workflow execution completed: {workflow_id}")
         return response
 
     except Exception as e:
@@ -167,8 +169,9 @@ async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
         input_data = request.input_data if request else None
         result = orchestrator.run_detection_workflow(input_data=input_data)
 
+        workflow_id = result.workflow_id[0]
         response = WorkflowResponse(
-            workflow_id=result.workflow_id,
+            workflow_id=workflow_id,
             status="completed" if result.workflow.completed else "failed",
             workflow_type="detection",
             execution_time=result.workflow.execution_time or 0.0,
@@ -184,7 +187,7 @@ async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
         )
 
-        logger.info(f"Detection workflow execution completed: {result.workflow_id}")
+        logger.info(f"Detection workflow execution completed: {workflow_id}")
         return response
 
     except Exception as e:
@@ -326,15 +329,15 @@ async def cancel_workflow(workflow_id: str):
     Returns:
         Cancellation status
     """
-    logger.info(f"Workflow cancellation requested: {workflow_id}")
+    logger.info(f"Workflow cancellation requested: {run_id}")
 
     try:
         # This would typically implement workflow cancellation logic
         # For now, return success
 
-        logger.info(f"Workflow cancelled: {workflow_id}")
+        logger.info(f"Workflow cancelled: {run_id}")
         return {
-            "workflow_id": workflow_id,
+            "run_id": run_id,
             "status": "cancelled",
             "message": "Workflow cancellation requested",
         }

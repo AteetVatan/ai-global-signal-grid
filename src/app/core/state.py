@@ -10,6 +10,7 @@ These models are used throughout the orchestrator, agents, and logging/auditing 
 
 from typing import Any, Dict, List, Optional, Annotated
 from datetime import datetime
+import operator
 from pydantic import BaseModel, Field
 from app.core.flashpoint import FlashpointDataset, FlashpointItem
 
@@ -59,17 +60,21 @@ class WorkflowState(BaseModel):
         default=None, description="Final results of the workflow"
     )
 
-
-class MASXState(BaseModel):
+class MASXState1(BaseModel):
     """
     Top-level state for a workflow run.
     Includes run metadata, agent states, workflow state, and errors.
     """
 
-    workflow_id: Optional[str] = None
-    timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Run start timestamp (UTC)"
+    workflow_id: Annotated[List[str], operator.add] = Field(default_factory=list)
+    timestamp: Annotated[List[datetime], operator.add] = Field(default_factory=list)
+    
+    # put current_flashpoint and all_flashpoints in data
+    data: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Data for the workflow",  # current_flashpoint and all_flashpoints
     )
+    
     agents: Dict[str, AgentState] = Field(
         default_factory=dict, description="States for each agent by name"
     )
@@ -80,8 +85,21 @@ class MASXState(BaseModel):
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional run metadata (config, env, etc.)"
     )
-    # put current_flashpoint and all_flashpoints in data
-    data: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Data for the workflow",  # current_flashpoint and all_flashpoints
-    )
+
+
+
+# Custom merge functions
+def merge_dicts(a: dict, b: dict) -> dict:
+    return {**a, **b}
+
+def merge_errors(a: list, b: list) -> list:
+    return a + b
+
+class MASXState(BaseModel):
+    workflow_id: Annotated[List[str], operator.add] = Field(default_factory=list)
+    timestamp: Annotated[List[datetime], operator.add] = Field(default_factory=list)
+    agents: Annotated[Dict[str, AgentState], merge_dicts] = Field(default_factory=dict)
+    workflow: Annotated[WorkflowState, lambda a, b: b]  # take latest if both update
+    errors: Annotated[List[str], merge_errors] = Field(default_factory=list)
+    metadata: Annotated[Dict[str, Any], merge_dicts] = Field(default_factory=dict)
+    data: Annotated[Dict[str, Any], merge_dicts] = Field(default_factory=dict)
