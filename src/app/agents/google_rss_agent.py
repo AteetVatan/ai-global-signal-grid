@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 
 from .base import BaseAgent, AgentResult
-from ..services.llm_service import LLMService
 from ..core.exceptions import AgentException
 from ..core.querystate import QueryState
 from ..services import FeedParserService
@@ -22,20 +21,20 @@ from datetime import datetime
 from ..config.logging_config import get_agent_logger
 
 
-class GoogleRssAgent(BaseAgent):
+class GoogleRssFeederAgent(BaseAgent):
 
     def __init__(self):
-        """Initialize the Google RSS Agent."""
+        """Initialize the Google RSS Feeder Agent."""
         super().__init__(
-            name="GoogleRssAgent",
+            name="GoogleRssFeederAgent",
             description="Extracts RSS feeds from Google News",
         )
         self.feed_parser_service = FeedParserService()
-        self.logger = get_agent_logger("GoogleRssAgent")
+        self.logger = get_agent_logger("GoogleRssFeederAgent")
 
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
-        Execute Google RSS Agent.
+        Execute Google RSS Feeder Agent.
         Args: input_data: Dictionary containing 'queries' field
         Returns: AgentResult: Result with RSS URLs and feed entries
         """
