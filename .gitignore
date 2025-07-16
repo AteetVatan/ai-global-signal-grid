@@ -80,3 +80,7 @@ dist/
 # Docker
 *.pid
 docker-compose.override.yml
+final_flashpoints.json
+README copy.md
+src/app/services/llm_service_1.py
+src/app/workflows/orchestrator copy.py
