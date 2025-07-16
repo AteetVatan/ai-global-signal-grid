@@ -107,3 +107,12 @@ class CountryNormalizer:
         return [
             self.normalize(name) for name in names if self.normalize(name) is not None
         ]
+        
+    def get_country_names_from_pycountry(self, names: List[str]) -> List[str]:
+        """Return a list of normalized country names if they exist, otherwise return None."""
+        #use is self.valid_names
+        return [
+            name for name in names if name in self.valid_names
+        ]
+        
+        

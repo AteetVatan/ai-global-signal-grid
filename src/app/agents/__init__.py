@@ -12,7 +12,7 @@ from .base import BaseAgent, AgentResult
 from .domain_classifier import DomainClassifier
 from .query_planner import QueryPlanner
 from .news_fetcher import NewsFetcher
-from .event_fetcher import EventFetcher
+from .gdelt_fetcher_agent import GdeltFetcherAgent
 from .merge_deduplicator import MergeDeduplicator
 from .language_resolver import LanguageResolver
 from .translator import Translator
@@ -24,6 +24,7 @@ from .memory_manager import MemoryManager
 from .logging_auditor import LoggingAuditor
 from .flashpoint_llm_agent import FlashpointLLMAgent
 from .google_rss_agent import GoogleRssFeederAgent
+from .gdelt_fetcher_agent import GdeltFetcherAgent  
 
 __all__ = [
     "BaseAgent",
@@ -31,7 +32,7 @@ __all__ = [
     "DomainClassifier",
     "QueryPlanner",
     "NewsFetcher",
-    "EventFetcher",
+    "GdeltFetcherAgent",
     "MergeDeduplicator",
     "LanguageResolver",
     "Translator",
@@ -43,4 +44,5 @@ __all__ = [
     "LoggingAuditor",
     "FlashpointLLMAgent",
     "GoogleRssFeederAgent",
+    "GdeltFetcherAgent",
 ]

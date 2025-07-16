@@ -6,6 +6,7 @@ from ..core.querystate import QueryState
 
 
 class FlashpointItem(BaseModel):
+    
     title: str = Field(..., min_length=1, description="Title of the flashpoint event")
     description: str = Field(
         ..., min_length=1, description="Brief description of the event"

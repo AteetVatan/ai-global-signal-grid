@@ -120,7 +120,7 @@ class QueryPlanner(BaseAgent):
                     language=["en"],
                     entity_languages={},
                     rss_urls=[],
-                    feed_entries=[],
+                    google_feed_entries=[],
                 )
                 query_states.append(query_state)
 

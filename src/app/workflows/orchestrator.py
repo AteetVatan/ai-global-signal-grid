@@ -61,6 +61,7 @@ class MASXOrchestrator:
                 QueryPlanner,
                 LanguageAgent,
                 Translator,
+                GdeltFetcherAgent,
                 # NewsFetcher,
                 # EventFetcher,
                 # MergeDeduplicator,
@@ -82,6 +83,7 @@ class MASXOrchestrator:
                 "query_planner": QueryPlanner(),
                 "language_agent": LanguageAgent(),
                 "translation_agent": Translator(),
+                "gdelt_feed_agent": GdeltFetcherAgent(),
                 # "news_fetcher": NewsFetcher(),
                 # "event_fetcher": EventFetcher(),
                 # "merge_deduplicator": MergeDeduplicator(),
@@ -122,7 +124,6 @@ class MASXOrchestrator:
             raise WorkflowException(f"Unknown workflow type: {workflow_type}")
 
   
-
     def _create_daily_workflow(self) -> StateGraph:
         """Create the main daily workflow graph."""
 
@@ -136,10 +137,9 @@ class MASXOrchestrator:
         per_flashpoint_rss.add_node("language_agent", self._run_language_agent)
         per_flashpoint_rss.add_node("translation_agent", self._run_translation_agent)
         
-        #
-        
+        #_run_gdelt_feed_agent
+        per_flashpoint_rss.add_node("gdelt_feed_agent", self._run_gdelt_feed_agent)        
         per_flashpoint_rss.add_node("google_rss_feeder_agent", self._run_google_rss_feeder_agent)
-        
         #google_rss_feeder_agent is last node in per_flashpoint subgraph      
                         
         
@@ -149,8 +149,10 @@ class MASXOrchestrator:
         per_flashpoint_rss.add_edge("query_planning", "language_agent")
         per_flashpoint_rss.add_edge("language_agent", "translation_agent")
         per_flashpoint_rss.add_edge("translation_agent", "google_rss_feeder_agent")
-        
-        per_flashpoint_rss.set_finish_point("google_rss_feeder_agent")        
+        per_flashpoint_rss.add_edge("translation_agent", "gdelt_feed_agent")
+        per_flashpoint_rss.add_edge("google_rss_feeder_agent", "gdelt_feed_agent")
+        per_flashpoint_rss.add_edge("gdelt_feed_agent", "merge_feeds_agent")        
+        per_flashpoint_rss.set_finish_point("merge_feeds_agent")        
 
         # Compile the subgraph into a single node that can be mapped -----
         per_flashpoint_rss_subgraph = per_flashpoint_rss.compile()
@@ -159,7 +161,6 @@ class MASXOrchestrator:
         #------------------ Main Workflow Graph ------------------ #
         workflow = StateGraph(MASXState)
         # --- Main workflow nodes ---
-        workflow = StateGraph(MASXState)
         workflow.add_node("start", self._start_workflow)
         workflow.add_node("flashpoint_detection", self._run_flashpoint_detection)
         workflow.add_node("process_one_fp", per_flashpoint_rss_subgraph)
@@ -568,13 +569,7 @@ class MASXOrchestrator:
                 query_states = [QueryState.model_validate(q) for q in queries]
                 flashpoint.queries = query_states
                 state.data["current_flashpoint"] = flashpoint.model_dump()
-                self.flashpoint_store.add_items([flashpoint])
-
-                   
-                #state.data["final_data"].append(flashpoint.model_dump())
-                
-                
-                
+                #self.flashpoint_store.add_items([flashpoint])                
                 
             state.workflow.current_step = "google_rss_feeder_agent"
 
@@ -599,9 +594,9 @@ class MASXOrchestrator:
         This agent is responsible for fetching the news and events from the google rss feed.
         """
         try:
-            agent = self.agents.get("google_rss_feeder_agent")
+            agent = self.agents.get("gdelt_feed_agent")
             if not agent:
-                raise WorkflowException("GoogleRSSAgent agent not available")
+                raise WorkflowException("GdeltFeedAgent agent not available")
 
             # Flashpoint validation
             flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
@@ -612,26 +607,18 @@ class MASXOrchestrator:
             # Run agent
             result = agent.run(input_data, workflow_id=state.workflow_id[0])
             # Update state
-            state.agents["google_rss_feeder_agent"] = agent.state
+            state.agents["gdelt_feed_agent"] = agent.state
 
             if result.success:
                 queries = result.data.get("queries", [])
                 query_states = [QueryState.model_validate(q) for q in queries]
                 flashpoint.queries = query_states
                 state.data["current_flashpoint"] = flashpoint.model_dump()
-                self.flashpoint_store.add_items([flashpoint])
-
-                   
-                #state.data["final_data"].append(flashpoint.model_dump())
-                
-                
-                
-                
-            state.workflow.current_step = "google_rss_feeder_agent"
+                #self.flashpoint_store.add_items([flashpoint])
 
             log_workflow_step(
                 self.logger,
-                "google_rss_agent",
+                "gdelt_feed_agent",
                 "agent_execution",
                 input_data=input_data,
                 output_data=result.data,
@@ -639,23 +626,46 @@ class MASXOrchestrator:
             )
 
         except Exception as e:
-            state.errors.append(f"GoogleRSSAgent failed: {str(e)}")
-            self.logger.error(f"GoogleRSSAgent error: {e}")
+            state.errors.append(f"GdeltFeedAgent failed: {str(e)}")
+            self.logger.error(f"GdeltFeedAgent error: {e}")
 
         return state
     
+    def _feed_finalizer(self, state: MASXState) -> MASXState:
+        """Merge the feeds from the google rss and gdelt feed agents"""
+        try:
+            # Flashpoint validation
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])            
+            self.flashpoint_store.add_items([flashpoint])
+            log_workflow_step(
+                self.logger,
+                "feed_finalizer",
+                "agent_execution",
+                workflow_id=state.workflow_id[0],
+            )
+        except Exception as e:
+            state.errors.append(f"FeedFinalizer failed: {str(e)}")
+            self.logger.error(f"FeedFinalizer error: {e}")
+
+        return state
+            
     
     
     def _fan_in_flashpoints(self, state: MASXState) -> MASXState:
         """
         Fan-in node: aggregate all individual flashpoint results from FlashpointStore
-        and write into MASXState.data["final_data"].
+        and store the final flashpoints to supabase db
         """
         store = self.flashpoint_store  # assumes set in __init__
 
         all_results = store.get_items()
         state.data["final_data"] = all_results
-
+        
+        
+        # important
+        # here we will strore all the flashpoints + feed to the supapabase db
+        # ----> store the flashpoints to supabase db
+        # ----> store the feed to supabase db
         # Optionally reset store to prepare for next run
         store.clear()
 
@@ -666,48 +676,7 @@ class MASXOrchestrator:
     
     
     
-    
-    
-    
-    def _rss_feeder_end_node(self, state: MASXState) -> MASXState:
-        """join all the flashpoint items """
-        try:
-            agent = self.agents.get("google_rss_feeder_agent")
-            if not agent:
-                raise WorkflowException("GoogleRSSAgent agent not available")
-
-            # Flashpoint validation
-            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
-            # Prepare input data
-            input_data = {
-                "queries": flashpoint.queries,
-            }
-            # Run agent
-            result = agent.run(input_data, workflow_id=state.workflow_id[0])
-            # Update state
-            state.agents["google_rss_feeder_agent"] = agent.state
-
-            if result.success:
-                queries = result.data.get("queries", [])
-                query_states = [QueryState.model_validate(q) for q in queries]
-                flashpoint.queries = query_states
-                state.data["current_flashpoint"] = flashpoint.model_dump()
-            state.workflow.current_step = "google_rss_feeder_agent"
-
-            log_workflow_step(
-                self.logger,
-                "google_rss_agent",
-                "agent_execution",
-                input_data=input_data,
-                output_data=result.data,
-                workflow_id=state.workflow_id[0],
-            )
-
-        except Exception as e:
-            state.errors.append(f"GoogleRSSAgent failed: {str(e)}")
-            self.logger.error(f"GoogleRSSAgent error: {e}")
-
-        return state
+   
 
     def _run_data_fetchers(self, state: MASXState) -> MASXState:
         """Run data fetching step with parallel execution."""

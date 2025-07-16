@@ -52,7 +52,7 @@ class GoogleRssFeederAgent(BaseAgent):
                 query.rss_urls = self._get_rss_urls(query)
                 query = self.feed_parser_service.run(query)
                 rss_urls.extend(query.rss_urls)
-                feed_entries.extend(query.feed_entries)
+                feed_entries.extend(query.google_feed_entries)
 
             result = {
                 "queries": queries,

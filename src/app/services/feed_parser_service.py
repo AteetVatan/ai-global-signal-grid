@@ -85,7 +85,7 @@ class FeedParserService:
                 processed = self._process_feed_entries(entries)
                 feed_entries.extend(processed)
 
-        query_state.feed_entries = feed_entries
+        query_state.google_feed_entries = feed_entries
         logger.info(f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries from {len(query_state.rss_urls)} feeds.")
 
         return query_state
