@@ -158,6 +158,7 @@ class MASXOrchestrator:
         #_run_gdelt_feed_agent
         per_flashpoint_rss.add_node("gdelt_feed_agent", self._run_gdelt_feed_agent)        
         per_flashpoint_rss.add_node("google_rss_feeder_agent", self._run_google_rss_feeder_agent)
+        per_flashpoint_rss.add_node("feed_finalizer", self._run_feed_finalizer)   
         #google_rss_feeder_agent is last node in per_flashpoint subgraph      
                         
         
@@ -167,10 +168,9 @@ class MASXOrchestrator:
         per_flashpoint_rss.add_edge("query_planning", "language_agent")
         per_flashpoint_rss.add_edge("language_agent", "translation_agent")
         per_flashpoint_rss.add_edge("translation_agent", "google_rss_feeder_agent")
-        per_flashpoint_rss.add_edge("translation_agent", "gdelt_feed_agent")
         per_flashpoint_rss.add_edge("google_rss_feeder_agent", "gdelt_feed_agent")
-        per_flashpoint_rss.add_edge("gdelt_feed_agent", "merge_feeds_agent")        
-        per_flashpoint_rss.set_finish_point("merge_feeds_agent")        
+        per_flashpoint_rss.add_edge("gdelt_feed_agent", "feed_finalizer")        
+        per_flashpoint_rss.set_finish_point("feed_finalizer")        
 
         # Compile the subgraph into a single node that can be mapped -----
         per_flashpoint_rss_subgraph = per_flashpoint_rss.compile()
@@ -649,7 +649,7 @@ class MASXOrchestrator:
 
         return state
     
-    def _feed_finalizer(self, state: MASXState) -> MASXState:
+    def _run_feed_finalizer(self, state: MASXState) -> MASXState:
         """Merge the feeds from the google rss and gdelt feed agents"""
         try:
             # Flashpoint validation

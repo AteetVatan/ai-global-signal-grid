@@ -1,9 +1,9 @@
 """Theis is the debug file for the MASX Global Signal Generator Agentic AI"""
 
 # ┌───────────────────────────────────────────────────────────────┐
-# │  Copyright (c) 2025 Ateet Vatan Bahmani                      │
-# │  Project: MASX AI – Strategic Agentic AI System              │
-# │  All rights reserved.                                        │
+# │  Copyright (c) 2025 Ateet Vatan Bahmani                       │
+# │  Project: MASX AI – Strategic Agentic AI System               │
+# │  All rights reserved.                                         │
 # └───────────────────────────────────────────────────────────────┘
 #
 # MASX AI is a proprietary software system developed and owned by Ateet Vatan Bahmani.
