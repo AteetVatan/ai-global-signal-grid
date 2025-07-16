@@ -1,720 +1,526 @@
-# AI-GlobalSignalGrid
-Global Signal Grid (GSG) is an on-demand AI system that detects top geopolitical, economic, and cultural hotspots using GPT-4 and builds multilingual Google News RSS feeds. Powered by FastAPI, LangGraph, and async pipelines, it returns structured JSON signals for global situational awareness. No DB, no scheduler fully agentic, modular, and fast.
+# 🛰️ MASX AI – RSS Feeder Service
 
+> **Agentic LangGraph pipeline for multilingual RSS query generation and geopolitical flashpoint aggregation.**
 
-MASX Agentic AI System Design
-MASX Agentic AI is a modular, multi-agent system for geopolitical intelligence gathering. It emphasizes
-deterministic execution (all LLM calls use temperature=0 ) and collaborative reasoning among
-specialized agents. The system orchestrates a daily pipeline that pulls news from Google News RSS and
-global events from GDELT 2.0, analyzes and clusters them into “hotspot” topics, and stores structured
-results (with embeddings) and logs in a Supabase (Postgres + pgvector) database. This design uses
-LangGraph for directed control flow, AutoGen for dynamic agent collaboration, and CrewAI principles for
-role-based task delegation.
- Architecture Diagram
-The MASX Agentic AI architecture consists of a central Orchestrator and a team of specialized agents (a
-“crew”). The Orchestrator (built with LangGraph) defines a directed graph of steps and coordinates the
-agents through a reason→plan→act→reflect loop. Each agent is an autonomous unit with a specific role
-and tools, and all interactions produce structured JSON outputs for reliability. The diagram below illustrates
-the main components and data flows:
-flowchart TD
- subgraph Orchestrator [Orchestrator (LangGraph Directed Graph)]
- direction TB
- A1(Reason & Plan<br/>- determine focus,<br/> prepare queries)
- A2(Act<br/>- delegate to fetching/analysis tools)
- A3(Reflect<br/>- check results,<br/> update plan if needed)
- end
- A1 -->|Invoke| B[Domain Classifier]
- A1 -->|Invoke| C[Query Planner]
- C --> D[News Fetcher]
- C --> E[Event Fetcher]
- D & E --> F[Merge & Deduplicator]
- F --> G[Language Resolver]
- G -->|if non-English| H[Translator]
- H --> G
- G --> I[Entity Extractor]
- I --> J[Event Analyzer]
- J --> K[Fact-Checker]
- K --> L[Validator]
- L --> M[Memory Manager]
- M --> N[Supabase DB<br/>(Postgres + pgvector)]
- subgraph Logging/Auditor
- O1(Track steps & data)
- O2(Validate JSON schemas)
-1
- O3(Monitor agent outputs)
- end
- O1 & O2 & O3 --> Orchestrator
- M -->|Embed vectors| N
- N -->|Store logs & results| Logging/Auditor
-Figure: System architecture and data flow. The Orchestrator uses a LangGraph-defined workflow to call
-each agent in sequence (some in parallel where possible). For example, the Orchestrator first calls Domain
-Classifier and Query Planner (Reason/Plan phase), then triggers News Fetcher and Event Fetcher to
-gather data (Act phase). The results are merged, translated if needed, and analyzed by subsequent agents
-(Event Analyzer, etc.), with validation and fact-checking before storing results. Throughout, a Logging/
-Auditor component records each step and enforces schema compliance. This directed graph approach
-ensures a controlled loop where the agent team iteratively makes decisions and actions until completion
-. The LangGraph framework allows defining such workflows with conditional transitions and
-feedback loops (e.g. after taking an action, the agent can loop back to reasoning) , ensuring the
-system can reason, act, and then reflect on results in a deterministic loop.
- Agent Types & Roles
-MASX Agentic AI employs a CrewAI-style team of agents, each with a clear role, specific allowed tools,
-memory access level, and delegation behavior. This division of labor follows CrewAI’s principle of assigning
-specialized roles to agents to tackle complex tasks collectively . Below we describe each agent’s identity
-and responsibilities:
-Domain Classifier – Role: Identifies the broad domain or category of content to focus on (e.g.
-political conflict, health crisis, economic event). It may classify incoming cues or previous outputs to
-set context (for instance, determining if today’s run should emphasize security, economy, etc.). Tools:
-Primarily an LLM prompt for classification (with a predefined label schema) at temperature 0.
-Memory Access: Can read recent context or past domain outputs (short-term JSON state) to inform
-classification. Delegation: Minimal – outputs a domain label or tags which the Orchestrator uses to
-guide the Query Planner. Does not call sub-agents itself.
-Query Planner – Role: Formulates search queries and filters for data sources based on the domain
-and any known context. It decides what to ask Google News and GDELT. For example, if Domain is
-“Political Unrest,” it might generate keyword queries (“protest, coup, unrest location X”) and GDELT
-filters (date range = last 24h, relevant themes). Tools: An LLM used to generate or refine queries
-(ensuring they follow Google News RSS syntax or GDELT API format) ; also can perform vector
-database lookups to avoid repeating recent queries (e.g., retrieving past hotspot embeddings to
-plan new queries). Memory Access: Read access to long-term memory (via the Memory Manager) to
-see if similar events were recently handled (helps avoid duplicative queries). Delegation: If uncertain
-about a query, it could invoke an AutoGen conversation with the Domain Classifier or Entity Extractor
-(e.g., “Do these keywords sufficiently cover the domain?”). Normally, it outputs a set of queries/
-parameters which the Orchestrator then passes to fetcher agents.
-News Fetcher – Role: Gathers news articles from Google News RSS feeds based on the Query
-Planner’s output. It automates what the existing google_rss_generator.py did, but as an agent
-1 2
-3 4
-2
-•
-•
-5
-•
-2
-subtask. Tools: Uses HTTP requests to Google News RSS endpoints (e.g., the news.google.com/
-rss/search?q=<query> API). Google’s RSS feed can return up to 100 results per query ,
-including title, snippet, URL, source, and timestamp. A lightweight RSS parser is used to extract
-articles. Memory Access: None (it simply fetches fresh data). Delegation: If a feed fails or yields zero
-results, it could notify the Orchestrator (which might adjust the query or proceed regardless). It
-doesn’t invoke other agents itself – it just returns the list of articles found.
-Event Fetcher – Role: Integrates GDELT 2.0 events as a parallel news source. It queries the GDELT
-Doc API for events/news matching our criteria (e.g., last day’s events globally, filtered by themes or
-keywords from Query Planner). Tools: Uses the gdeltdoc Python client to perform an
-article_search with specified filters. For example, it might use filters for date range = today,
-language = all or specific, and keywords/entities of interest. The GDELT Doc API returns a list of news
-articles as a DataFrame with fields like URL, title, publication date (“seendate”), source domain,
-language, etc. . Memory Access: None (fetches live data). Delegation: If certain specialized data is
-needed (e.g., a timeline of volume or tone), Event Fetcher could use GDELT’s timeline APIs as a
-tool. Generally, it returns raw event articles. Like News Fetcher, it doesn’t call other agents itself.
-Merge/Deduplicator – Role: Combines and cleans the results from multiple sources (Google News
-and GDELT). It identifies duplicate or highly similar articles/events and merges them to avoid
-redundancy. Tools: Algorithmic text similarity checks (e.g., comparing URLs, titles, or using content
-embeddings for similarity). It may use a fuzzy matching library or even vector similarity via pgvector
-to cluster near-duplicates. Memory Access: Can retrieve recent vectors of past news to ensure new
-items aren’t repeats of yesterday’s (if necessary). Delegation: Purely a utility agent – it doesn’t invoke
-others. It produces a unified list of unique articles/events for analysis.
-Language Resolver – Role: Determines if any fetched content is in a foreign language and routes it
-for translation. It scans article metadata (or content, if available) for language codes. For example,
-GDELT provides a language field for each article , and RSS feeds might require language
-detection on titles. Tools: Could use a simple language detection library or rely on metadata. Memory
-Access: Not needed (operates on current batch). Delegation: For any non-English text, it delegates by
-invoking the Translator agent, then receives the translated text and replaces the original content
-with it (or attaches an English version for downstream agents). It ensures all subsequent analysis
-sees English text. If content is already English, it simply passes data along.
-Translator – Role: Translates non-English news content into English. This agent is only engaged via
-the Language Resolver when needed. Tools: An external translation API (like Google Translate) or an
-LLM capable of translation. For deterministic output, a rule-based translator or a high-temperature
-LLM is avoided – instead we use a reliable service or a multilingual model at temp=0 with a strict
-prompt to output translated text. Memory Access: Possibly none (translates on the fly), though if
-similar text was translated recently, it could consult memory to reuse translations. Delegation: Does
-not call other agents. It returns the English text (with original reference) to the Language Resolver.
-Entity Extractor – Role: Extracts key entities (people, organizations, locations, etc.) from the news
-content. After translation, this agent processes article titles or full text to identify entities for each
-article/event. These entities will help in clustering and reasoning about the events. Tools: Could use
-an NLP library (like spaCy’s NER) for full determinism, or an LLM prompt that returns a JSON list of
-entities found (with a fixed schema). Given the need for structured output, an LLM at temp=0 with a
-6
-•
-7
-8
-9
-•
-•
-8
-•
-•
-3
-well-defined function (e.g., “extract_entities”) is feasible. Memory Access: Can optionally cross-check
-against a knowledge base (vector search) if needed (e.g., to link entities to known identities), but
-primarily it works on the provided text. Delegation: If the text is very large or complex, it might ask a
-sub-agent (like a Summarizer agent, not explicitly listed) to condense the text before extraction –
-however, typically it handles extraction directly. It outputs an enriched data structure: for each
-article, attached entities.
-Event Analyzer – Role: Analyzes the merged, translated, entity-tagged news set to identify
-“hotspots” – clusters of related articles that likely correspond to a single real-world event or theme. It
-essentially converts raw articles into structured events or topics. This may involve clustering by
-similarity (e.g., articles that share many entities or keywords) and summarizing each cluster. Tools: An
-LLM is utilized here for higher-level reasoning – e.g., to label clusters or summarize what the cluster
-is about. The Event Analyzer might use a prompt like: “Group these articles into events and provide a
-short summary of each event, in JSON.” The LLM’s output is schema-enforced (list of events with fields
-like event_name , article_urls , summary ). Because the LLM is constrained to JSON format,
-Pydantic will validate that the output has, say, a list of clusters each containing the collected URLs.
-Memory Access: Read/write access to vector memory – for example, it can store each cluster’s
-embedding (by averaging member article embeddings) to represent “hotspot nodes” for future
-similarity searches. It might also retrieve historical clusters from memory to see if this event has
-occurred before or relates to ongoing narratives. Delegation: If the Event Analyzer is unsure about an
-event (say conflicting info in articles), it can engage the Fact-Checker agent via an AutoGen multiturn dialog (asking a question like “These two reports differ on casualty numbers – which is correct?”).
-The Event Analyzer then integrates that feedback into its summary. Primarily, it produces the
-hotspot list: e.g., [{"hotspot": "<event description>", "articles": [URL1,
-URL2, ...], ...}, ...] .
-Fact-Checker – Role: Verifies critical facts and consistency across sources for the identified events. It
-acts as a failsafe to reduce misinformation. When invoked (either by Event Analyzer or Orchestrator
-if a result looks suspicious), the Fact-Checker will cross-verify details. Tools: It may use an LLM with a
-specialized prompt to compare statements, or even call an external tool (like a search engine or a
-database of known facts) if available. For instance, it could run a quick search (if online access is
-permitted in cloud deployment) to see if other reputable outlets corroborate a claim. Alternatively, it
-queries the Supabase vector memory to find similar events or past knowledge. Memory Access: Read
-access to past embeddings and data (to see if the same event was recorded with different facts).
-Delegation: It can’t delegate further (no deeper agent hierarchy); it returns either a validation (e.g.,
-“facts consistent”) or a correction annotation (e.g., “Article X’s number looks like an outlier compared
-to others”). The Orchestrator or Event Analyzer can use this info to flag or correct the final output
-(e.g., exclude an unreliable source or add a note).
-Validator – Role: Ensures the final data output conforms to the expected schema and quality
-standards. It checks that each hotspot has the required fields (e.g., name, list of URLs, etc.), that all
-URLs are valid and not broken (it might do a quick HTTP HEAD request for status), and that the JSON
-is properly structured. It also ensures all LLM outputs were parsed correctly and all required steps
-ran. Tools: Pydantic (or similar JSON schema validators) to enforce structure. It may also include
-simple business rules (e.g., ensure no hotspot is empty, no duplicate URL across hotspots after
-merging, etc.). Memory Access: Possibly logs some metadata, but mainly works on the current result.
-•
-•
-•
-4
-Delegation: Does not call other agents; it either passes a clean bill or raises an exception for any issue
-(which could trigger the Orchestrator to adjust or re-run certain parts).
-Memory Manager – Role: Handles all interactions with the Supabase Postgres database and the
-pgvector long-term memory. It is responsible for storing new data (hotspots, articles, embeddings)
-and retrieving relevant historical data for agents that request it. Essentially, it abstracts the database
-operations so that other agents don’t directly query the DB. Tools: Supabase Python client or REST
-interface, specifically using the pgvector extension for similarity search. For example, it can take an
-embedding (like an event summary embedding) and find the nearest past events in vector space (to
-detect if this “hotspot” has happened before or is related to an ongoing thread). Supabase’s toolkit
-allows storing and querying embeddings at scale , and the Memory Manager ensures these
-operations are done efficiently and securely. Memory Access: Full access (read/write) to the long-term
-memory store. Delegation: It doesn’t delegate to other agents, but serves requests. If the vector
-search yields ambiguous results, it might rank them or apply thresholds. It returns data to the
-requester agent or orchestrator in JSON (e.g., list of similar events or confirmation of save).
-Logging/Auditor – Role: Maintains a detailed audit log of every step in the pipeline and enforces
-compliance with any constraints (such as content or security policies). It tracks agent invocations,
-tool usage, outputs, execution time, and errors. This agent (or component) has a dual function:
-logging and monitoring. Tools: Logging library to write structured logs (JSON lines) for each action,
-and simple rule-checkers to ensure no agent output violates guidelines (e.g., if an LLM somehow
-returned unstructured text or sensitive data, the auditor would flag it). It might also utilize any builtin moderation APIs of the LLM to filter content. Memory Access: Write access to a logging table in the
-database (or a log file). It can also read past logs for debugging or pattern detection (like noticing if a
-certain agent frequently fails). Delegation: Does not call others (except possibly sending alerts to a
-human operator if something critical occurs). It runs in the background or after each agent step to
-append the log. The Orchestrator might treat it as an observer agent that wraps each step execution.
-Each agent is thus constrained to specific tools and data. This separation follows the CrewAI paradigm,
-where a crew of agents coordinate via structured workflows, each contributing their expertise . Interagent communication is enabled but controlled – e.g. via the Orchestrator or using AutoGen “conversations”
-when needed. All LLM interactions yield JSON outputs that adhere to predefined Pydantic schemas,
-ensuring deterministic parsing and easing inter-agent data passing.
-🛠 Tools per Agent
-Each agent has access to a limited set of tools or external resources to perform its tasks. The table below
-summarizes the key tools/technologies each agent uses or calls:
-Agent Key Tools & APIs
-Domain
-Classifier
-OpenAI GPT-4 (or similar LLM) for text classification (system prompt with domain
-categories, output as JSON).
-Query Planner OpenAI GPT-4 for query generation (guided prompt templates); Supabase PGVector
-for retrieving related past event embeddings (read-only).
-•
-10
-•
-11 12
-5
-Agent Key Tools & APIs
-News Fetcher
-Google News RSS feed (HTTP GET to news.google.com/rss endpoints) – uses
-queries with date filters etc. ; RSS parser library.
-Event Fetcher
-GDELT Doc API via gdeltdoc Python client for article search and timeline data;
-handles API keys and rate limits internally.
-Merge/
-Deduplicator
-Python text processing libraries (e.g. difflib or fuzzy matching) for title similarity;
-optional use of vector embeddings (via Memory Manager) to cluster near-duplicates.
-Language
-Resolver
-langdetect or similar lightweight language detection library; simple rule engine to
-decide if translation is needed based on language codes.
-Translator External translation API (Google Translate or DeepL) for high-accuracy deterministic
-translation; or a local multilingual model (e.g., Helsinki NLP opus MT) if on-prem.
-Entity
-Extractor
-spaCy NLP model for Named Entity Recognition (ensures consistency in extraction);
-alternatively GPT-4 with a function call for extract_entities (returns entities in
-JSON).
-Event Analyzer
-OpenAI GPT-4 (zero-temp) for analyzing and summarizing clusters (complex reasoning
-prompt with few-shot examples of clustering); possibly uses k-means or hierarchical
-clustering on embeddings as a pre-step before LLM summarization.
-Fact-Checker
-OpenAI GPT-4 for reasoning and cross-checking (prompted with conflicting
-statements to analyze); optional web search tool (if allowed) via an API or a knowledge
-base query; Supabase vector similarity search to find corroborating documents in
-memory.
-Validator Pydantic or JSON Schema for output validation; Python requests for URL health
-checks; simple consistency checks (e.g., date formats, no missing fields).
-Memory
-Manager
-Supabase Python client / PostgREST API – to INSERT new entries (hotspots, article
-metadata, embeddings) and SELECT for vector search (utilizing pgvector
-similarity queries) .
-Logging/
-Auditor
-Standard logging library (structured JSON logs); LangGraph’s built-in moderation
-hooks (to catch if an agent’s output deviated or contained disallowed content) ;
-potentially OpenAI content filter API for safety.
-Each agent’s tools are isolated – for example, the News Fetcher cannot directly call the database or LLM, it
-only fetches RSS feeds. This principle of least privilege in tool access is a security feature and also makes the
-system modular: you can adjust or replace tools for one agent without affecting others. For instance, if
-moving on-prem with no internet, the News Fetcher’s RSS tool could be replaced by an internal news feed
-reader, while the rest of the agents remain the same.
- Multi-Agent Workflow Examples
-The MASX system supports multiple reusable workflows composed of the above agents. Here we describe
-three key orchestrations (flows) that demonstrate how agents collaborate in different scenarios. Each flow is
-5
-7
-10
-13
-6
-implemented as a directed subgraph of the LangGraph orchestrator, ensuring the sequence and conditional
-logic are deterministic.
-Flow Example 1: Summarize → Reason → Query → Generate → Store
-Summarize: At the start of a daily run, the Orchestrator triggers a summarization of context. For
-instance, it may ask the Memory Manager for a brief summary of yesterday’s hotspots or retrieve the
-top events from the past week (via a vector query), then have the Domain Classifier or an LLM agent
-summarize the trending themes. This summary (e.g., “Tensions increasing in Region X; Economic
-crisis in Country Y…”) sets the stage.
-Reason: Using that context, the Orchestrator (or a dedicated reasoning agent) decides what the
-focus of this run should be. It might reason about which domains or regions require attention today.
-For example, if the summary indicated rising tensions in Region X, the system “reasons” that
-geopolitical conflict is a key domain for today. This could be an LLM step that outputs a rationale and
-selected focus (structured, e.g., {"focus_domain": "Conflict", "priority_regions":
-["Region X","Region Y"]} ).
-Query: Given the focus, the Query Planner generates precise queries. For each priority region or
-topic, it formulates Google News RSS queries (e.g., q="Region X conflict when:1d" ) and
-GDELT filters (e.g., keyword = Region X, theme = Conflict, last 24h). These queries are deterministic
-and reproducible. The Orchestrator then calls the News Fetcher and Event Fetcher in parallel (if
-supported) with these queries.
-Generate: Once data is fetched, the Event Analyzer takes over to generate structured results. It
-clusters articles into events and generates summaries for each cluster (using LLM reasoning).
-Essentially, it “generates” the final hotspot nodes (with titles and associated URLs). For example, it
-might output: Hotspot 1: “Coup in Country Z” with 5 related article URLs, Hotspot 2: “Border clashes in
-Region X” with 3 URLs, etc. This generation is guided by the previous reasoning context (so it knows
-these are conflict events and frames them accordingly).
-Store: The Memory Manager then stores the results: each hotspot node is saved as a row in the
-database (with fields like date, hotspot title, article list, summary text, etc.), and important fields are
-embedded into vectors (e.g., concatenation of title and summary is embedded via OpenAI or local
-model) and stored in a pgvector column for future retrieval. The system also stores execution
-metadata (timestamp, domain focus, number of articles, any errors) in a log table. The output for the
-day is effectively a list of article URLs per hotspot, now in the database for analysts or downstream
-systems to use.
-(This flow illustrates the core daily pipeline: the system summarizes context, reasons a plan, queries sources,
-generates structured intelligence, and stores it. It ensures continuity by referencing prior days (via memory) and
-focusing on the most relevant areas.)
-Flow Example 2: Detect → Classify → Ask Subagent → Respond → Visualize
-Detect: In this scenario, the system detects something during its run that triggers a special
-handling. For example, suppose the Event Analyzer notices an anomaly – one cluster has a drastically
-1.
-2.
-3.
-4.
-5.
-1.
-7
-different tone or a single source claim. This could be a detection of potential misinformation or
-simply an uncertainty (ambiguity) in the data. The Orchestrator can flag this and initiate a sub-flow.
-Classify: The Orchestrator delegates the flagged issue to an appropriate agent for classification. For
-instance, if the issue is a suspicious claim in an article, the Domain Classifier (or a similar classifier
-agent) might classify the type of anomaly: is it a factual discrepancy? sensationalism? If it’s languagerelated (e.g., an article in an unknown language slipped in), the Language Resolver classifies which
-language. Essentially, this step identifies what kind of follow-up is needed.
-Ask Subagent: Based on the classification, the Orchestrator invokes a specialized sub-agent to
-handle it. Using AutoGen’s dynamic agent chat capabilities, it can spawn an on-the-fly conversation
-between, say, the Event Analyzer and the Fact-Checker. For example, the Event Analyzer might send a
-message: “Agent FactChecker, article X reports 1000 troops, while others report 100. Can you verify which
-is likely correct?” The Fact-Checker agent, using its tools, might do a quick cross-source analysis and
-respond with a reasoned answer. This multi-turn dialog continues until the ambiguity is resolved. (If
-the issue was language, a Translator sub-agent would be asked to translate, etc.)
-Respond: The sub-agent (Fact-Checker in this case) responds with a result: e.g., “Verified: likely 100 is
-correct – Article X appears unreliable or a typo.” The Event Analyzer receives this and updates the event
-data (perhaps marking Article X as unverified or adjusting the summary to note the correction). In an
-AutoGen framework, these agents exchange messages in JSON or a controlled format until the
-querying agent is satisfied . The Orchestrator ensures this side-conversation doesn’t stall or
-stray off course (with timeouts or step limits).
-Visualize: Finally, the outcome is integrated into the system’s output. “Visualize” here means
-presenting or utilizing the result in a human-friendly way. For example, the Logging/Auditor might
-log that a fact-check occurred and tag the hotspot with a warning. Or, if this were an interactive
-session, the system could output a chart or text highlighting the differences. In our pipeline (which
-has no UI), visualize could equate to structuring the final JSON such that it’s easy to see the resolution
-(perhaps adding a field like "verification": "Article X corrected" ). If there were a
-reporting dashboard consuming the DB, this info would be clearly shown (like a special flag on that
-hotspot).
-(This flow shows the system’s ability to dynamically react to uncertainties: it detects an issue, classifies it, engages
-a sub-agent in a focused dialogue to resolve the ambiguity, and then incorporates the answer back. The use of
-AutoGen conversable agents allows such on-demand collaboration between roles .)
-Flow Example 3: Trigger → Delegate → Fetch Tool Output → Update Plan → Re-Execute
-Trigger: This flow demonstrates an internal loop for iterative refinement or scheduled re-runs. The
-trigger could be time-based (the internal scheduler signaling the start of a daily run at midnight) or
-event-based (e.g., an agent finds incomplete data and triggers a second pass). Since we avoid
-external cron/Airflow, the Orchestrator itself contains a scheduling loop – for example, after finishing
-a run, it schedules the next one by sleeping until the next day or by maintaining an internal clock.
-Triggers can also occur mid-run: e.g., the Validator might trigger a re-run if validation fails.
-2.
-3.
-4.
-14 15
-5.
-16 17
-1.
-8
-Delegate: On trigger, the Orchestrator delegates tasks to the agents according to the defined
-workflow graph. In a scheduled run, it simply kicks off the sequence from Domain Classifier onward
-(as in Flow 1). In a mid-run correction scenario, the Orchestrator might delegate a specific subset of
-tasks. For instance, if validation found a missing field in one hotspot, the Orchestrator can delegate a
-sub-plan: maybe call the Event Analyzer again for that cluster or ask the Query Planner to fetch
-additional articles to fill the gap. LangGraph enables branching logic, so the Orchestrator can decide
-which branch (subgraph) to run based on the state .
-Fetch Tool Output: The agents perform their actions and fetch results from tools as usual. The
-Orchestrator collects these outputs. Importantly, this step emphasizes that after delegation, the
-Orchestrator waits for and gathers outputs from tools or APIs. For instance, if this flow was triggered
-by a need to get more data on an ongoing crisis, the Orchestrator delegates to News/Event Fetchers
-with a narrower query (maybe a specific location), then fetches their outputs (article lists). The
-Orchestrator monitors these calls – if an API fails or returns empty, it notes that. The Logging/
-Auditor logs each tool call with status (success/failure, records fetched, etc.).
-Update Plan: After receiving tool outputs, the Orchestrator (or an agent like the Query Planner)
-updates the plan. This is the reflect part of the loop – analyzing whether the goal is met or more
-steps are needed . For example, if the additional articles fetched still don’t have a needed
-detail, the plan might be updated to call the Fact-Checker or even to adjust the query and try again.
-The state (short-term JSON) is updated: e.g., state["fetched_articles"] = N . If N is below a
-threshold, maybe plan to broaden the query. The Orchestrator can modify its graph path accordingly
-(LangGraph allows conditional edges and looping back to earlier nodes based on such conditions
-).
-Re-Execute: With a new plan in place, the Orchestrator executes the necessary steps. This could
-mean looping back to a previous stage in the LangGraph. For example, the graph might loop from
-the “Reflect” node back to the “Query” node if state["needs_more"] is true, thereby re-invoking
-the Query Planner with a revised prompt (perhaps asking for different keywords). All LLM calls
-remain deterministic, so re-execution with the same state yields the same result – but here the state
-has changed due to the updated plan, so the loop gradually converges to a satisfactory result. Once
-the Validator approves the output, the loop ends. The final data is then stored (or updated in DB if it
-was a mid-run fix). The internal scheduler then sets the next trigger if this was a daily run. All
-intermediate steps have been logged, so one can trace the plan updates in the logs (each re-plan
-event recorded with reason).
-(This flow highlights the system’s resilience and autonomy: it can trigger itself on schedule, delegate tasks to
-agents, incorporate tool outputs, adjust its plan, and re-run parts of the workflow without human intervention.
-This is crucial for daily reliable operation – if anything goes wrong or data is incomplete, the system self-corrects
-in a controlled, deterministic manner rather than silently failing.)
-2.
-18 19
-3.
-4.
-4 20
-3
-5.
-9
- Security Strategies
-Building a production-grade agent system requires robust security and safety measures. MASX Agentic AI
-integrates several strategies to ensure reliable and safe execution:
-Schema-Enforced Outputs: Every LLM agent is prompted to return data in a specific JSON schema.
-We use Pydantic (or similar) to validate each output against the expected format. This prevents
-prompt injections or model hallucinations from corrupting the process – if the output isn’t valid JSON
-or misses fields, the Validator (or Logging/Auditor) catches it and the Orchestrator can correct
-course. By strictly requiring JSON, we reduce ambiguity and ensure deterministic parsing. For
-example, the Event Analyzer’s prompt explicitly says: “Respond ONLY in this JSON schema: …” and any
-deviation is treated as an error.
-Role-Based Access Control: Each agent is only allowed to perform tasks within its role and use its
-designated tools. The Orchestrator (and LangGraph’s design) acts as a controller that prevents an
-agent from arbitrarily calling tools it shouldn’t. For instance, the Translator cannot directly write to
-the database, and the Query Planner cannot fetch news by itself – they must communicate through
-the orchestrated channels. This containment is a form of access control that minimizes the impact of
-any single agent’s failure or misbehavior. If an agent tries to go “off-script” (which could only happen
-if an LLM deviated from instructions), LangGraph would not have a transition for that, effectively
-halting the process – a fail-safe to prevent cascading errors.
-Moderation and Content Filtering: We incorporate prompt filtering and moderation at multiple
-levels. The Logging/Auditor agent monitors outputs for any disallowed content. Additionally, we can
-utilize the LLM’s own content filter or OpenAI’s moderation API on any user-facing text. While this
-system isn’t user-interactive (no direct user prompts), it still handles external data (news content)
-which might be sensitive or malicious. The system sanitizes inputs (e.g., stripping HTML from RSS
-feeds, removing scripts in text) and ensures that when the LLM sees text, it’s just plain news content.
-LangGraph also allows adding moderation nodes – e.g., we could have a node that checks the LLM’s
-proposed action before execution . We have configured such quality-control loops to prevent
-agents from “veering off course” . For example, before executing a tool call generated by an
-LLM, the Orchestrator can verify the tool name and parameters against an allowlist.
-Deterministic Execution & Reproducibility: Security also means reliability. With temperature=0
-for all LLM calls, the system avoids nondeterministic variability. The same inputs will produce the
-same outputs, which is crucial for an auditable intelligence pipeline. We log random seeds for any
-non-LLM processes if applicable. Each daily run is traceable: given the logs and stored intermediate
-data, one can reproduce the flow. This makes it easier to identify and fix issues (a form of
-auditability).
-Data Validation and Sanitization: The Validator agent not only checks schema but also sanitizes
-data going into storage. For instance, it ensures that strings are UTF-8 and free of control characters,
-dates are in standard format, and arrays of URLs contain valid URL strings. This prevents malicious
-data from propagating. In addition, before inserting into the database, the Memory Manager uses
-parameterized queries to avoid SQL injection (though in our case data is not user-provided, it’s still a
-good practice). By the time data reaches long-term memory, it’s been through multiple checks.
-•
-•
-•
-13
-21 22
-•
-•
-10
-Prompt Guardrails: All system and agent prompts are crafted to minimize risky outputs. Agents are
-instructed on what not to do (e.g., the Fact-Checker’s prompt might say “do not make up facts, only
-use given sources or say you are uncertain”). CrewAI’s approach to agent backstories and goals can
-also be used to constrain behavior (for example, giving each agent a clear persona and scope to
-prevent it from drifting beyond its duty). The Orchestrator’s instructions via system prompts ensure
-each LLM knows it must follow the plan and format.
-Credential & API Security: The system uses environment variables for API keys (e.g., OpenAI key,
-Supabase service key, GDELT API key if needed) and the Memory Manager or tools load these
-securely. No keys are hard-coded. In on-prem deployments, these can be managed via vaults or
-secure config files. Also, external API usage is minimal (just news and translation); if those fail or
-return unexpected results, the system handles it gracefully (logging the failure, possibly retrying
-with backoff, but never exposing keys or crashing uncontrolled).
-Human Oversight Hooks: While the system is autonomous, we include hooks for human review.
-The Logging/Auditor could, for example, email a report if a major anomaly is detected or if the FactChecker had to correct something significant. This ensures that if something truly novel or
-dangerous is found (say a breaking crisis event), a human analyst can be alerted to verify the AI’s
-conclusions. The architecture supports a “human-in-the-loop” mode where certain agent outputs
-require approval before proceeding – LangGraph’s human approval nodes could be toggled on
-as needed in high-stakes deployments.
-In summary, MASX Agentic AI’s security comes from structured outputs, strict role separation,
-moderated LLM interactions, and thorough logging. By validating at each step and keeping agents
-constrained, we maintain trust in the system’s autonomy.
-📊 Logging Format
-The system produces extensive logs in JSON format for each step, which are stored in the database (or a
-file) for traceability. Each log entry captures the who, what, when, and result of an action. We define a
-consistent schema for log records, for example:
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2.0+-green.svg)](https://github.com/langchain-ai/langgraph)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0+-red.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## 📋 Overview
+
+In today's fragmented information landscape, geopolitical events emerge across multiple languages, sources, and timeframes, creating chaos for intelligence gathering and strategic decision-making. The **MASX AI RSS Feeder Service** addresses this challenge through an intelligent, agentic pipeline that automatically detects geopolitical flashpoints and generates comprehensive multilingual news feeds for each event.
+
+### 🎯 Core Mission
+
+This service transforms raw geopolitical events into structured, multilingual RSS feeds by:
+
+- **Detecting Flashpoints**: Identifying critical geopolitical events from global news sources
+- **Multilingual Processing**: Expanding queries across 50+ languages using advanced translation
+- **Parallel Aggregation**: Combining Google News RSS and GDELT data sources
+- **Intelligent Filtering**: Applying domain classification and relevance scoring
+- **Structured Output**: Delivering clean, categorized feeds to downstream systems
+
+### 🏗️ Architecture Philosophy
+
+Designed as a modular component within the **MASX Global Signal Grid** stack, this service exemplifies modern AI orchestration patterns using LangGraph's state management, parallel processing, and agent coordination capabilities.
+
+---
+
+## 🧭 LangGraph Workflow Architecture
+
+### Main Workflow Orchestration
+
+```mermaid
+graph TD
+    START([Start]) --> StartNode[start]
+    StartNode --> FlashpointDetection[flashpoint_detection]
+    FlashpointDetection -->|fan-out| ProcessOneFP[process_one_fp]
+    ProcessOneFP --> FanIn[fan_in_flashpoints]
+    FanIn --> EndNode[end]
+    EndNode --> END([End])
+    
+    style StartNode fill:#e1f5fe
+    style FlashpointDetection fill:#fff3e0
+    style ProcessOneFP fill:#f3e5f5
+    style FanIn fill:#e8f5e8
+    style EndNode fill:#ffebee
+```
+
+### Per-Flashpoint Subgraph Processing
+
+```mermaid
+graph TD
+    Domain[domain_classification] --> Query[query_planning]
+    Query --> Lang[language_agent]
+    Lang --> Trans[translation_agent]
+    Trans --> GoogleRSS[google_rss_feeder_agent]
+    Trans --> Gdelt[gdelt_feed_agent]
+    GoogleRSS --> Gdelt
+    Gdelt --> Merge[merge_feeds_agent]
+    
+    style Domain fill:#e3f2fd
+    style Query fill:#f1f8e9
+    style Lang fill:#fff8e1
+    style Trans fill:#fce4ec
+    style GoogleRSS fill:#e0f2f1
+    style Gdelt fill:#f3e5f5
+    style Merge fill:#e8f5e8
+```
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+graph TB
+    subgraph "Input Layer"
+        FP[Flashpoints<br/>from MASX Core]
+    end
+    
+    subgraph "LangGraph Orchestrator"
+        DC[DomainClassifier<br/>Agent]
+        QP[QueryPlanner<br/>Agent]
+        LA[Language<br/>Agent]
+        TA[Translation<br/>Agent]
+        GR[Google RSS<br/>Feeder Agent]
+        GA[GDELT Feed<br/>Agent]
+        MA[Merge Feeds<br/>Agent]
+    end
+    
+    subgraph "External Services"
+        ON[OpenAI/Mistral<br/>LLM APIs]
+        DT[Deep Translator<br/>Service]
+        HF[Hugging Face<br/>Transformers]
+        PC[PyCountry<br/>Library]
+    end
+    
+    subgraph "Output Layer"
+        SB[Supabase<br/>Database]
+        FE[Feed Entries<br/>Structured Data]
+    end
+    
+    FP --> DC
+    DC --> QP
+    QP --> LA
+    LA --> TA
+    TA --> GR
+    TA --> GA
+    GR --> GA
+    GA --> MA
+    MA --> SB
+    
+    TA -.-> DT
+    DC -.-> ON
+    LA -.-> HF
+    QP -.-> PC
+    
+    style FP fill:#e1f5fe
+    style SB fill:#e8f5e8
+    style ON fill:#fff3e0
+    style DT fill:#f3e5f5
+```
+
+---
+
+## 🛠️ Technology Stack
+
+### 🤖 **AI/ML & Agent Frameworks**
+- **LangGraph 0.5.1** - State management and agent orchestration
+- **LangChain 0.3.26** - LLM integration and prompt management
+- **LangChain-OpenAI 0.3.27** - OpenAI integration
+- **LangChain-Community 0.3.27** - Community integrations
+- **CrewAI 0.140.0** - Multi-agent collaboration framework
+- **AutoGen 0.9.5** - Conversational AI framework
+- **OpenAI 1.93.0** - GPT-4 and embedding models
+- **TikToken 0.9.0** - Token counting and cost tracking
+
+### 🌐 **Web Framework & API**
+- **FastAPI 0.115.14** - High-performance async API framework
+- **Uvicorn 0.35.0** - ASGI server with WebSocket support
+- **Starlette 0.46.2** - ASGI toolkit
+- **Pydantic 2.11.7** - Data validation and serialization
+- **Pydantic-Settings 2.10.1** - Settings management
+- **HTTPX 0.28.1** - Async HTTP client
+
+### 🗄️ **Database & Vector Storage**
+- **Supabase 2.16.0** - PostgreSQL with real-time capabilities
+- **PostgREST 1.1.1** - REST API for PostgreSQL
+- **pgvector 0.4.1** - Vector similarity search
+- **psycopg2-binary 2.9.10** - PostgreSQL adapter
+- **asyncpg 0.30.0** - Async PostgreSQL driver
+- **SQLAlchemy 2.0.41** - ORM and database toolkit
+
+### 🔍 **NLP & Language Processing**
+- **SpaCy 3.8.7** - Industrial-strength NLP pipeline
+- **Transformers 4.53.1** - Hugging Face model library
+- **Torch 2.7.1** - PyTorch deep learning framework
+- **Sentence-Transformers 5.0.0** - Text embeddings
+- **NLTK 3.9.1** - Natural language toolkit
+- **TextBlob 0.19.0** - Text processing library
+- **jieba3k 0.35.1** - Chinese text segmentation
+
+### 🌍 **Translation & Language Services**
+- **Deep-Translator 1.11.4** - Multi-provider translation
+- **LangDetect 1.0.9** - Language detection
+- **PyCountry 24.6.1** - Country and language data
+- **Country-Converter 1.3** - Country code conversion
+- **LangCodes 3.5.0** - Language code utilities
+
+### 📰 **News & Data Sources**
+- **FeedParser 6.0.11** - RSS/Atom feed processing
+- **Newspaper3k 0.2.8** - Article extraction and parsing
+- **GDELTDoc 1.12.0** - GDELT API client
+- **Requests 2.32.4** - HTTP library
+- **AioHTTP 3.12.13** - Async HTTP client/server
+
+### 📊 **Data Processing & Analytics**
+- **Pandas 2.3.0** - Data manipulation and analysis
+- **NumPy 2.3.1** - Numerical computing
+- **Scikit-Learn 1.7.0** - Machine learning
+- **SciPy 1.16.0** - Scientific computing
+- **Plotly 6.2.0** - Interactive visualizations
+- **NetworkX 3.5** - Graph analysis
+
+### 🔧 **Text Processing & Similarity**
+- **FuzzyWuzzy 0.18.0** - Fuzzy string matching
+- **RapidFuzz 3.13.0** - Fast fuzzy string matching
+- **Python-Levenshtein 0.27.1** - String similarity
+- **Regex 2024.11.6** - Advanced regex operations
+
+### 🚀 **Async & Concurrency**
+- **Asyncio** - Asynchronous programming
+- **Asyncio-Throttle** - Rate limiting
+- **AioHappyEyeballs** - Happy eyeballs algorithm
+- **ThreadPoolExecutor** - Thread-based parallelism
+
+### 📝 **Development & Quality**
+- **Black 25.1.0** - Code formatting
+- **isort 6.0.1** - Import sorting
+- **Flake8 7.3.0** - Linting
+- **MyPy 1.16.1** - Static type checking
+- **Pre-Commit 4.2.0** - Git hooks
+- **Pytest 8.4.1** - Testing framework
+- **Pytest-Asyncio 1.0.0** - Async testing
+- **Coverage 7.9.2** - Test coverage
+
+### 📚 **Documentation & Monitoring**
+- **MkDocs 1.6.1** - Documentation generator
+- **MkDocs-Material 9.6.15** - Material theme
+- **Structlog 25.4.0** - Structured logging
+- **OpenTelemetry** - Observability framework
+- **PostHog 5.4.0** - Product analytics
+
+### 🔐 **Security & Authentication**
+- **PyJWT 2.10.1** - JSON Web Tokens
+- **Cryptography 45.0.5** - Cryptographic recipes
+- **bcrypt 4.3.0** - Password hashing
+- **OAuthLib 3.3.1** - OAuth implementation
+
+### 🐳 **Containerization & Deployment**
+- **Docker** - Containerization
+- **Python 3.12-slim** - Base image
+- **Build-Essential** - Compilation tools
+- **libpq-dev** - PostgreSQL development
+
+### 🔄 **Utilities & Helpers**
+- **Tenacity 9.1.2** - Retry logic and resilience
+- **Python-Dotenv 1.1.1** - Environment management
+- **Rich 14.0.0** - Rich text and formatting
+- **Click 8.2.1** - Command line interface
+- **Typer 0.16.0** - CLI framework
+- **Watchdog 6.0.0** - File system monitoring
+- **WatchFiles 1.1.0** - File watching
+
+---
+
+## ✨ Key Features
+
+### 🔄 Parallelized Flashpoint Processing
+- **Fan-out/Fan-in Pattern**: Process multiple flashpoints concurrently using LangGraph's parallel execution
+- **State Management**: Maintains consistent state across distributed agent execution
+- **Error Isolation**: Individual flashpoint failures don't affect the entire pipeline
+
+### 🌍 Multilingual Intelligence
+- **50+ Language Support**: Automatic query expansion across major world languages
+- **Translation-Aware URLs**: Generate language-specific RSS feeds for Google News
+- **Cultural Context**: Adapt queries based on regional news patterns and terminology
+
+### 📡 Dual-Source Aggregation
+- **Google News RSS**: Real-time news from Google's global news index
+- **GDELT Events**: Structured event data from the Global Database of Events, Language, and Tone
+- **Intelligent Merging**: Deduplication and relevance scoring across sources
+
+### 🧠 Agentic Intelligence
+- **Domain Classification**: Categorize flashpoints by geopolitical domain (conflict, trade, diplomacy, etc.)
+- **Query Planning**: Generate optimized search queries based on event context
+- **Language Detection**: Automatically identify relevant languages for each flashpoint
+
+### 🚀 Production-Ready Features
+- **Rate Limiting**: Thread-safe rate limiting for external API calls
+- **Retry Logic**: Exponential backoff with configurable retry attempts
+- **Structured Logging**: JSON-formatted logs with correlation IDs
+- **Health Monitoring**: Comprehensive health checks and metrics
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.12 or higher
+- Git
+- API keys for OpenAI/Mistral, Google Search, GDELT, and Supabase
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/masx-ai/ai-global-signal-grid.git
+   cd ai-global-signal-grid/modules/ai-global-signal-grid
+   ```
+
+2. **Create virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install -e .
+   ```
+
+4. **Configure environment**
+   ```bash
+   cp env.example .env
+   # Edit .env with your API keys and configuration
+   ```
+
+5. **Run the service**
+   ```bash
+   # Start the FastAPI server
+   python -m src.main
+   
+   # Or use uvicorn directly
+   uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+### Environment Configuration
+
+Create a `.env` file with the following essential variables:
+
+```env
+# LLM Configuration (Required)
+MISTRAL_API_KEY=your_mistral_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Database Configuration (Required)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+
+# External APIs (Required)
+GOOGLE_SEARCH_API_KEY=your_google_custom_search_api_key_here
+GOOGLE_CX=your_google_custom_search_engine_id_here
+GDELT_API_KEY=your_gdelt_api_key_here
+
+# Translation Services (Optional)
+GOOGLE_TRANSLATE_API_KEY=your_google_translate_api_key_here
+DEEPL_API_KEY=your_deepl_api_key_here
+
+# Environment
+ENVIRONMENT=development
+DEBUG=true
+LOG_LEVEL=INFO
+```
+
+### API Endpoints
+
+Once running, the service provides these key endpoints:
+
+- **Health Check**: `GET /health`
+- **Workflow Status**: `GET /api/workflows/status`
+- **Run Daily Workflow**: `POST /api/workflows/daily`
+- **Flashpoint Data**: `GET /api/data/flashpoints`
+- **Feed Entries**: `GET /api/data/feeds`
+
+---
+
+## 📁 Project Structure
+
+```
+masx-ai-server/
+├── src/
+│   ├── app/
+│   │   ├── agents/                 # LangGraph agent implementations
+│   │   │   ├── base.py            # Base agent class
+│   │   │   ├── domain_classifier.py
+│   │   │   ├── query_planner.py
+│   │   │   ├── language_agent.py
+│   │   │   ├── translator.py
+│   │   │   ├── google_rss_agent.py
+│   │   │   └── gdelt_fetcher_agent.py
+│   │   ├── workflows/
+│   │   │   └── orchestrator.py    # Main LangGraph workflow
+│   │   ├── services/              # Business logic services
+│   │   │   ├── data_sources.py
+│   │   │   ├── translation.py
+│   │   │   ├── llm_service.py
+│   │   │   └── database.py
+│   │   ├── core/                  # Core data models and utilities
+│   │   │   ├── flashpoint.py
+│   │   │   ├── state.py
+│   │   │   ├── querystate.py
+│   │   │   └── exceptions.py
+│   │   ├── config/                # Configuration management
+│   │   │   ├── settings.py
+│   │   │   └── logging_config.py
+│   │   └── api/                   # FastAPI application
+│   │       ├── app.py
+│   │       └── routes/
+│   ├── main.py                    # Application entry point
+│   └── __init__.py
+├── tests/                         # Test suite
+├── requirements.txt               # Python dependencies
+├── pyproject.toml                # Project configuration
+├── Dockerfile                    # Container configuration
+└── README.md                     # This file
+```
+
+---
+
+## 📊 Sample Output
+
+The service produces structured feed entries in the following format:
+
+```json
 {
-"run_id": "2025-07-04T0000Z",
-"timestamp": "2025-07-04T00:15:30Z",
-"agent": "News Fetcher",
-"action": "fetch_rss",
-"parameters": {"query": "Region+X+unrest+when:1d"},
-"result": {"articles_fetched": 42},
-"status": "success",
-"message": "Fetched 42 articles from Google News RSS for query 'Region X
-unrest'."
+  "flashpoint_id": "fp_2024_01_15_001",
+  "title": "Escalating Tensions in South China Sea",
+  "description": "Recent military exercises and territorial disputes",
+  "entities": ["China", "Philippines", "United States"],
+  "domains": ["military", "diplomacy", "territorial"],
+  "queries": [
+    {
+      "query_original": "South China Sea tensions military exercises",
+      "query_translated": "南中国海紧张局势军事演习",
+      "language": "zh",
+      "rss_url": "https://news.google.com/rss/search?q=南中国海紧张局势军事演习&hl=zh",
+      "feed_entries": [
+        {
+          "url": "https://example.com/article1",
+          "title": "China Conducts Military Exercises in Disputed Waters",
+          "description": "Beijing demonstrates military capabilities...",
+          "source_language": "zh",
+          "published_date": "2024-01-15T10:30:00Z",
+          "relevance_score": 0.92,
+          "domain": "military"
+        }
+      ]
+    }
+  ],
+  "aggregated_feeds": {
+    "google_rss_count": 15,
+    "gdelt_count": 8,
+    "total_articles": 23,
+    "languages_covered": ["en", "zh", "ja", "ko"],
+    "processing_time": "45.2s"
+  }
 }
-run_id ties logs to a particular daily run (could be a timestamp or an incrementing ID).
-•
-•
-•
-23
-•
-11
-timestamp is the exact time of the step.
-agent and action describe which agent performed what. Agents have predefined action names
-(e.g., DomainClassifier.classify_domain , EventFetcher.fetch_articles , etc.) making it
-easy to filter logs.
-parameters captures inputs to that action – in the above, the query used for RSS fetch. For an LLM
-agent, this might include a short descriptor of the prompt or relevant state (but we avoid full prompt
-text to keep logs concise; however, we can log a prompt hash or ID for reference).
-result gives key output metrics. We typically log counts or IDs rather than full content. For
-example, the Fact-Checker might log {"verdict": "corrected", "reason": "source X had
-a typo"} . Or the Event Analyzer could log {"hotspots_identified": 5} .
-status indicates success/failure of the action. On failure, an error field would appear with an
-error message or stack trace, and potentially the Orchestrator would log a follow-up entry for the
-retry action.
-message is a human-readable summary for quick scanning (optional but helpful for auditors).
-Logs are written step-by-step. The Logging/Auditor agent appends an entry after each agent does its work.
-In addition, the Orchestrator logs high-level events like “Daily run started” and “Daily run completed in X
-seconds” with run-level info (like total articles processed, number of hotspots, etc.).
-We also maintain a pipeline execution log that summarizes each run in a single entry, for reporting. For
-example:
-{
-"run_id": "2025-07-04T0000Z",
-"date": "2025-07-04",
-"domains": ["Conflict"],
-"hotspot_count": 5,
-"articles_count": 123,
-"duration_minutes": 4.2,
-"errors": 0
-}
-This is stored in a runs table, whereas detailed step logs go into a logs table. By storing logs in
-Postgres (Supabase), we can query them easily (e.g., find how often Fact-Checker corrected something, or
-trend the number of hotspots per day). The use of JSON fields in Postgres enables flexible queries on
-structured log data.
-All logs include timestamps, and ordering is guaranteed by the sequence of the Orchestrator’s execution
-(which is single-threaded per run for deterministic behavior). If parallel fetching is done, we still log those
-fetches as separate entries with their timestamps.
-Sample Log Sequence (abbreviated):
-[
-{
-•
-•
-•
-•
-•
-•
-12
-"run_id": "2025-07-04T0000Z", "timestamp": "00:00:00Z",
-"agent": "Orchestrator", "action": "start_run", "parameters": {"date":
-"2025-07-04"}, "status": "success"
-},
-{
-"run_id": "2025-07-04T0000Z", "timestamp": "00:00:02Z",
-"agent": "Domain Classifier", "action": "classify_domain",
-"parameters": {"input_summary": "..."},
-"result": {"domain": "Conflict"}, "status": "success"
-},
-{
-"agent": "Query Planner", "action": "generate_queries", "parameters":
-{"domain": "Conflict"},
-"result": {"queries": ["Region+X+unrest when:1d", ...]}, "status":
-"success", "timestamp": "00:00:04Z", "run_id": "2025-07-04T0000Z"
-},
-...
-{
-"agent": "Validator", "action": "validate_output", "result": {"valid":
-true}, "status": "success", "timestamp": "00:04:10Z", "run_id":
-"2025-07-04T0000Z"
-},
-{
-"agent": "Memory Manager", "action": "store_results", "parameters":
-{"hotspots": 5, "articles": 123}, "status": "success", "timestamp":
-"00:04:15Z", "run_id": "2025-07-04T0000Z"
-},
-{
-"agent": "Orchestrator", "action": "end_run", "result": {"duration_sec":
-255}, "status": "success", "timestamp": "00:04:15Z", "run_id":
-"2025-07-04T0000Z"
-}
-]
-This illustrates how one can trace every step. If an error occurs (say the RSS fetch fails), we’d see a status
-"failure" and an error message, followed by perhaps a retry entry. The Logging/Auditor ensures no log is
-lost, even if a crash happens (it will flush logs on exception).
-In summary, the logging format is structured, comprehensive, and stored alongside outputs. It serves both
-as an audit trail and a debug tool to refine the system.
-13
- Extensibility Strategy
-MASX Agentic AI is designed with extensibility and adaptability in mind. Key strategies to allow easy
-extension, maintenance, and deployment flexibility include:
-Modular Agent Architecture: Each agent is implemented as an independent module with a clear
-interface (inputs/outputs). Adding a new agent is straightforward: define its role and tools, integrate
-it into the LangGraph workflow, and update the Orchestrator’s directed graph. For example, if we
-wanted to add a “Sentiment Analyzer” agent to gauge tone of news (positive/negative), we could
-insert it after Entity Extractor. Its output (e.g., a sentiment score) could then be used by Event
-Analyzer to prioritize events. Thanks to the directed graph design, we can insert or remove nodes
-without rewriting the entire logic – just adjust the edges and conditions.
-Swap-in of LLMs or Tools: The system is LLM-agnostic as long as the model can follow instructions
-to output the required JSON. We currently use GPT-4 via OpenAI API, but we can swap to an opensource model (like Llama 2) deployed locally. The prompts and expected schema remain the same.
-We might need to adjust system messages for different models, but the role of each agent doesn’t
-change. Similarly, tools like translation API or news API can be replaced with equivalents. For
-instance, if Google News RSS becomes unavailable, we could integrate a different news API (or even
-web scraping via a Browser tool) by modifying the News Fetcher’s toolset. Because the output format
-(list of articles) is consistent, other agents won’t need changes. The codebase or CrewAI
-configuration would load different tool classes depending on environment (cloud vs on-prem).
-Cloud and On-Prem Deployments: To support on-premise deployments, we minimize external
-dependencies. All critical components (Orchestrator, agents, vector DB) can run in a self-contained
-environment. Supabase can be self-hosted or replaced with a plain Postgres + pgvector in an onprem server . The GDELT integration could be adjusted to use offline data if internet access is not
-allowed – e.g., using GDELT data dumps if provided internally, or skip it and rely on internal news
-sources. The design allows toggling features via config. We use environment flags to enable/disable
-network calls. For example, USE_GDELT=true/false could include or skip the Event Fetcher
-agent. If on-prem, one might set USE_TRANSLATOR=false to avoid external API and instead rely
-on a local multilingual model for translation. The orchestrator will only activate agents whose
-features are enabled. This conditional inclusion is built into the directed graph (certain branches can
-be no-ops if disabled).
-Internal Scheduling vs External: The pipeline is built to run as a persistent process (or a container)
-that triggers itself daily, but it can also be orchestrated by external schedulers if needed. For
-extensibility, we separated scheduling logic from core logic. If a user wants to use Airflow or Cron in
-cloud, they can call the pipeline’s run function externally. Conversely, for simplicity, the system can
-internally schedule with Python’s scheduling libraries or a simple sleep-loop. All scheduling
-configurations (timing, time zone, etc.) are in a config file or environment variable, making it easy to
-change (e.g., to twice-daily runs).
-Scalability and Parallelism: Extensibility also means the system can scale with more data or more
-agents. The design allows parallel execution of independent agents – for example, News Fetcher and
-Event Fetcher run in parallel threads or async tasks to speed up data gathering. We could also
-parallelize the handling of different domains or regions by spawning sub-crews for each (if in the
-•
-•
-•
-10
-•
-•
-14
-future we want separate agent crews focusing on different topics simultaneously). LangGraph
-supports hierarchical agents and concurrency where appropriate . Our architecture could be
-extended to a hierarchy: e.g., a top-level Orchestrator spawns multiple regional sub-orchestrators
-(each with their own crew of agents) to cover more ground, then a results-merging agent combines
-their outputs. This would be an extension for higher throughput.
-CrewAI and AutoGen Configurability: Because we followed CrewAI patterns, one can leverage
-CrewAI’s framework to modify agent definitions or add new roles without heavy refactoring. CrewAI’s
-config (roles, tasks, crew assembly) can be externalized, enabling non-developers to adjust agent
-roles or priorities. AutoGen’s conversation patterns are also configurable – for instance, one could
-extend the Fact-Checker <-> Event Analyzer dialogue with more turns or integrate a
-“UserProxyAgent” for a human analyst to jump in if needed . These frameworks are designed
-for extension, so our system can evolve (e.g., adding a UI agent or chat interface later for an analyst
-to query the system directly).
-Logging and Monitoring for Continuous Improvement: We treat the logs as a feedback
-mechanism. By analyzing logs over time, developers can identify where agents struggle or
-bottlenecks occur. This informs extensions – e.g., if the logs show frequent fact-check corrections, it
-might be worth integrating a knowledge base to the Fact-Checker or improving the initial query
-strategy. The system’s modular design means improvements can be localized (improve one agent or
-add a new one to handle a recurring issue). Monitoring dashboards can be built on the log data to
-visualize performance and errors, guiding future enhancements.
-Hot-Swapping and A/B Testing: In a production scenario, we can run multiple agent versions in
-parallel for testing. Since each agent’s output is JSON, we could test a new version of, say, the Event
-Analyzer (maybe one using a different LLM or algorithm) by running it in parallel on the same input
-and comparing outputs (this could even be done as an additional agent that evaluates differences).
-The orchestration could route to either the old or new agent based on a config flag (enabling A/B
-testing without affecting the whole pipeline).
-Portability: The entire system can be containerized (Docker) with all dependencies (LLM model,
-translation model, etc. if self-hosted). This makes it easy to deploy on cloud or on-prem Kubernetes.
-The design avoids reliance on any proprietary cloud-only service (Supabase can be cloud or selfhosted, OpenAI can be swapped with local models, etc.). This ensures no vendor lock-in and allows
-moving the system as needed.
-Documentation and Diagram-as-Code: The architecture diagram and flows are kept as
-documentation (like this markdown and possibly Mermaid diagrams) that developers can update as
-they extend the system. We encourage keeping the LangGraph visualization up-to-date so one can
-clearly see the flow when adding new nodes or agents.
-In essence, MASX Agentic AI is built to grow and adapt. Whether adding new data sources (e.g., social
-media feeds), new analytical agents (risk scoring, influence estimation), or deploying in a constrained
-environment, the system’s modular crew of agents and flexible orchestrator can accommodate changes. By
-borrowing patterns from projects like the AI hedge fund (multi-expert agents contributing to a common
-goal) , we ensure that adding an expert agent only enriches the system’s output without requiring an
-21 24
-•
-25 26
-•
-•
-•
-•
-27 28
-15
-overhaul. This extensible, lego-block architecture means MASX can continuously evolve to meet future
-intelligence needs.
-LangGraph: A Framework for Building Agentic AI with Directed Graphs | by
-Shinimarykoshy | Medium
-https://medium.com/@shinimarykoshy1996/langgraph-a-framework-for-building-agentic-ai-with-directed-graphs-096bf7af07b6
-Building a multi agent system using CrewAI | by Vishnu Sivan | The Pythoneers | Medium
-https://medium.com/pythoneers/building-a-multi-agent-system-using-crewai-a7305450253e
-Google News RSS Search Parameters: The Missing Docs | NewsCatcher
-https://www.newscatcherapi.com/blog/google-news-rss-search-parameters-the-missing-documentaiton
-GitHub - alex9smith/gdelt-doc-api: A Python client for the GDELT 2.0 Doc API
-https://github.com/alex9smith/gdelt-doc-api
-AI & Vectors | Supabase Docs
-https://supabase.com/docs/guides/ai
-LangGraph
-https://www.langchain.com/langgraph
-Multi-agent Conversation Framework | AutoGen 0.2
-https://microsoft.github.io/autogen/0.2/docs/Use-Cases/agent_chat/
-How Does AI Hedge Fund Work: Clearly Explained
-http://anakin.ai/blog/how-does-ai-hedge-fund-work/
-1 3 4 18 19 20
-2 11 12
-5 6
-7 8 9
-10
-13 21 22 23 24
-14 15 16 17 25 26
-27 28
-16
+```
+
+---
+
+## 🗺️ Future Roadmap
+
+### Current Phase: RSS Feed Generation
+```mermaid
+gantt
+    title MASX AI Service Evolution
+    dateFormat  YYYY-MM-DD
+    section Current
+    RSS Feed Generator    :active, rss, 2024-01-01, 2024-06-30
+    section Next Phase
+    Doctrine Matcher      :doctrine, 2024-07-01, 2024-12-31
+    section Future
+    Threat Modeling       :threat, 2025-01-01, 2025-06-30
+    Strategic Dashboard   :dashboard, 2025-07-01, 2025-12-31
+```
+
+### 🎯 Strategic Applications
+
+#### Real-Time Intelligence
+- **Crisis Alert Feeds**: Automated alerts for NGOs and government agencies
+- **Early Warning Systems**: Predictive analysis of emerging conflicts
+- **Media Monitoring**: Real-time tracking of geopolitical narratives
+
+#### Strategic Decision Support
+- **Policy Analysis**: Impact assessment of geopolitical events
+- **Risk Assessment**: Quantified risk scoring for global events
+- **Scenario Planning**: AI-powered scenario generation and analysis
+
+#### AI Integration
+- **Journalism Automation**: Automated news aggregation and fact-checking
+- **Defense Intelligence**: Enhanced situational awareness for defense applications
+- **Academic Research**: Large-scale geopolitical event analysis
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from the community! Please follow these guidelines:
+
+### Development Setup
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Install development dependencies**: `pip install -e ".[dev]"`
+4. **Run tests**: `pytest tests/`
+5. **Format code**: `black src/ tests/`
+6. **Commit changes**: Follow conventional commit format
+
+### Commit Convention
+
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation updates
+- `refactor:` - Code refactoring
+- `test:` - Test additions or updates
+- `chore:` - Maintenance tasks
+
+### Code Quality
+
+- **Type Hints**: All functions must include type annotations
+- **Docstrings**: Comprehensive docstrings for all public APIs
+- **Tests**: Maintain >90% test coverage
+- **Linting**: Code must pass `flake8` and `mypy` checks
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🔗 Related Projects
+
+- **[MASX Core](https://github.com/masx-ai/masx-core)** - Core flashpoint detection engine
+- **[MASX Dashboard](https://github.com/masx-ai/masx-dashboard)** - Real-time visualization interface
+- **[MASX API Gateway](https://github.com/masx-ai/masx-gateway)** - Unified API management
+
+---
+
+## 📞 Support
+
+- **Documentation**: [docs.masx.ai](https://docs.masx.ai)
+- **Issues**: [GitHub Issues](https://github.com/masx-ai/ai-global-signal-grid/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/masx-ai/ai-global-signal-grid/discussions)
+- **Email**: support@masxai.com
+
+---
+
+*Built with ❤️ by the MASX AI Team*
