@@ -36,6 +36,7 @@ class MasxGdeltService:
         self.logger = get_logger(__name__)
         self.API_KEY = self.settings.gdelt_api_key
         self.BASE_URL = self.settings.GDELT_API_URL
+        self.ENDPOINT = "/api/articles"
 
         self.headers = {
             "x-api-key": self.API_KEY,
@@ -71,7 +72,7 @@ class MasxGdeltService:
         }
 
         try:
-            response = requests.post(self.BASE_URL, json=payload, headers=self.headers)
+            response = requests.post(self.BASE_URL + self.ENDPOINT, json=payload, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -139,7 +140,7 @@ class MasxGdeltService:
 
         return results
     
-    def validate_search_query(data: dict) -> tuple[bool, list[str]]:
+    def validate_search_query(self, data: dict) -> tuple[bool, list[str]]:
         errors = []
 
         required_fields = ["keyword", "start_date", "end_date", "country", "maxrecords"]
