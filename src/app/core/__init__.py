@@ -41,6 +41,7 @@ from .utils import (
     retry_with_backoff,
     measure_execution_time, 
 )
+from .date_utils import DateUtils
 
 __all__ = [
     "MASXState",
@@ -64,4 +65,5 @@ __all__ = [
     "FlashpointItem",
     "FlashpointDataset",
     "FlashpointStore",
+    "DateUtils",
 ]

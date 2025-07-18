@@ -51,6 +51,7 @@ from .flashpoint_detection import (
     Flashpoint,
     create_flashpoint_detection_service,
 )
+from .ping_apis_service import PingApisService
 
 __all__ = [
     "DatabaseService",
@@ -80,4 +81,5 @@ __all__ = [
     "create_flashpoint_detection_service",
     "LanguageService",
     "MasxGdeltService",
+    "PingApisService",
 ]
