@@ -48,6 +48,7 @@ from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
 from ..core.querystate import QueryState
 from ..core.flashpointstore import FlashpointStore
+from ..services import PingApisService
 
 class MASXOrchestrator:
     """
@@ -68,6 +69,7 @@ class MASXOrchestrator:
         self.workflows = {}
         self._initialize_agents()
         self.flashpoint_store = FlashpointStore()
+        self.ping_apis_service = PingApisService()
 
     def _initialize_agents(self):
         """Initialize all available agents."""
@@ -653,8 +655,30 @@ class MASXOrchestrator:
         """Merge the feeds from the google rss and gdelt feed agents"""
         try:
             # Flashpoint validation
-            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])            
-            self.flashpoint_store.add_items([flashpoint])
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"]) 
+            
+            #go through all feed entries and remove duplicates
+            #merge them and deduplicate
+            feed_entries = []
+            url_set = set() 
+            for query in flashpoint.queries:
+                #first add GDELT feed entries
+                for entry in query.gdelt_feed_entries:
+                    if entry.url not in url_set:
+                        url_set.add(entry.url)
+                        feed_entries.append(entry)
+                        
+                #then add google rss feed entries
+                for entry in query.google_feed_entries:
+                    if entry.url not in url_set:
+                        url_set.add(entry.url)
+                        feed_entries.append(entry)                       
+                        
+                        
+            flashpoint.feed_entries = feed_entries
+            #********************                       
+            self.flashpoint_store.add_items([flashpoint]) # this is the final flashpoint with all the feed entries
+            #********************
             log_workflow_step(
                 self.logger,
                 "feed_finalizer",
@@ -680,11 +704,20 @@ class MASXOrchestrator:
         state.data["final_data"] = all_results
         
         
+        
         # important
         # here we will strore all the flashpoints + feed to the supapabase db
         # ----> store the flashpoints to supabase db
         # ----> store the feed to supabase db
         # Optionally reset store to prepare for next run
+        
+        
+        for flashpoint in all_results:
+            # here we will store the flashpoint to the supabase db
+            # here we will store the feed to the supabase db
+            pass
+         
+        
         store.clear()
 
         return state
