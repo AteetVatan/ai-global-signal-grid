@@ -29,7 +29,8 @@ This agent is responsible for:
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from itertools import combinations
-
+import json
+import re
 from .base import BaseAgent, AgentResult
 from ..services.data_sources import DataSourcesService
 from ..core.state import AgentState
@@ -39,6 +40,10 @@ from ..config.logging_config import get_agent_logger
 from ..services import MasxGdeltService
 from ..core.country_normalizer import CountryNormalizer
 from ..core.language_utils import LanguageUtils
+from ..services.llm_service import LLMService
+from ..core import DateUtils
+from ..services import FeedParserService
+from ..config.settings import get_settings
 
 class GdeltFetcherAgent(BaseAgent):
     """
@@ -61,7 +66,9 @@ class GdeltFetcherAgent(BaseAgent):
         self.logger = get_agent_logger("GdeltFetcherAgent")
         self.masx_gdelt_service = MasxGdeltService()
         self.country_normalizer = CountryNormalizer()
-        
+        self.llm_service = LLMService()
+        self.feed_parser_service = FeedParserService()  
+        self.settings = get_settings()
         
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
@@ -103,23 +110,30 @@ class GdeltFetcherAgent(BaseAgent):
             self.logger.info("Fetching GDELT events", query_count=len(queries), max_events=max_events)
 
             combo_set = set()  # for deduplication (keyword, country)
-            start_date = datetime.now().strftime("%Y-%m-%d")
-            end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            end_date = datetime.now().strftime("%Y-%m-%d")
             for query in queries:
                 
                 maxrecords = 250
-
                 countries = self.country_normalizer.get_country_names_from_pycountry(query.entities)
-                if not countries:
-                    continue
+                
+                if len(countries) == 0:
+                    #in case of no countries, ask llM to add countries
+                    countries = self._get_related_countries_from_llm(query.query, query.entities)
+                    #valid country name
+                    countries = self.country_normalizer.get_country_names_from_pycountry(countries)
+                    if not countries:
+                        continue # if no countries, skip this query
 
                 combo_list = []
 
-                for r in range(1, len(countries) + 1):
-                    for keyword_combo in combinations(countries, r):
+                for r in range(1, len(query.entities) + 1):
+                    for keyword_combo in combinations(query.entities, r):
                         keyword_str = ", ".join(keyword_combo)
 
                         for country in countries:
+                            if keyword_str == country:
+                                continue
                             combo_key = (keyword_str, country)
                             if combo_key in combo_set:
                                 continue
@@ -139,26 +153,12 @@ class GdeltFetcherAgent(BaseAgent):
                     continue
 
                 # Fetch in batch (threaded)
+                #if self.settings.debug:
+                    #combo_list = combo_list[:3]
                 results = self.masx_gdelt_service.fetch_articles_batch_threaded(combo_list)
 
                 # Convert articles to FeedEntry
-                feed_entries = []
-                for key, articles in results.items():
-                    for article in articles:
-                        feed_entries.append(FeedEntry(
-                            url=article.get("url", ""),
-                            title=article.get("title"),
-                            seendate=article.get("published"),
-                            domain={
-                                "title": article.get("source", {}).get("title", ""),
-                                "href": article.get("source", {}).get("href", ""),
-                            },
-                            description=article.get("title"),
-                            language=LanguageUtils.get_language_code(article.get("language", "")),
-                            country=article.get("sourcecountry", "")
-                        ))
-
-                query.gdelt_feed_entries = feed_entries
+                query.gdelt_feed_entries = self.feed_parser_service.process_gdelt_feed_entries(results)
 
             return AgentResult(
                 success=True,
@@ -173,7 +173,58 @@ class GdeltFetcherAgent(BaseAgent):
                 metadata={"exception_type": type(e).__name__},
             )
 
+    def _get_related_countries_from_llm(self, query: str, entities: List[str]) -> list[str]:
+        """Use LLM to infer geopolitically related countries for given entities."""
 
+        system_prompt = (
+            "You are a geopolitical analyst.\n"
+            "Given named entities, return countries directly involved, affected, or influential.\n"
+            "Output must be JSON with:\n"
+            "- countries: list of country names [country_1, country_2, ...]\n"
+            "Be precise. No guessing."
+        )
+
+        user_prompt = f"""
+        Query: "{query}"
+        Entities: {entities}
+        Which countries are geopolitically related?
+        """
+
+        try:
+            response = self.llm_service.generate_text(
+                user_prompt=user_prompt.strip(),
+                system_prompt=system_prompt,
+                temperature=0,
+                max_tokens=512
+            )
+            result = self.validate_related_countries_json(response)
+            return result
+
+        except Exception as e:
+            self.logger.warning(f"LLM failed to infer related countries: {e}")
+            return []
+            
+    def validate_related_countries_json(self, response_text: str) -> list[str]:
+        try:
+            # Extract first JSON object using regex
+            match = re.search(r"\{[\s\S]*?\}", response_text)
+            if not match:
+                raise ValueError("No JSON object found in response.")
+
+            json_part = match.group(0)
+            data = json.loads(json_part)
+
+            if not isinstance(data, dict):
+                raise ValueError("Response is not a JSON object.")
+
+            if "countries" not in data or not isinstance(data["countries"], list):
+                raise ValueError("Missing or invalid 'countries' list.")
+
+            return data["countries"]
+
+        except Exception as e:
+            self.logger.warning(f"[Validator] Failed to parse related countries: {e}")
+            return []
 
     def _calculate_relevance_score(self, event: Dict[str, Any]) -> float:
         """Calculate relevance score for an event."""
