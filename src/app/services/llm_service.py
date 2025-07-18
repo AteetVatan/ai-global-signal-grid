@@ -132,7 +132,7 @@ class LLMService:
     @retry_with_backoff(max_attempts=3, base_delay=1.0)
     def generate_text(
         self,
-        prompt: str,
+        user_prompt: str,
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
@@ -154,11 +154,11 @@ class LLMService:
         try:
             if self.provider == "openai":
                 return self._generate_openai(
-                    prompt, system_prompt, temperature, max_tokens, **kwargs
+                    user_prompt, system_prompt, temperature, max_tokens, **kwargs
                 )
             elif self.provider == "mistral":
                 return asyncio.run(self._generate_mistral_async(
-                    prompt, system_prompt, temperature, max_tokens, **kwargs
+                    user_prompt, system_prompt, temperature, max_tokens, **kwargs
                 ))
             else:
                 raise ConfigurationException(f"Unsupported provider: {self.provider}")
@@ -200,7 +200,7 @@ class LLMService:
 
     async def _generate_mistral_async(
         self,
-        prompt: str,
+        user_prompt: str,
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
@@ -213,7 +213,7 @@ class LLMService:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "user", "content": user_prompt})
 
             payload = {
                 "model": self.model,
@@ -239,7 +239,7 @@ class LLMService:
                             resp.raise_for_status()
                             data = await resp.json()
                             content = data["choices"][0]["message"]["content"]
-                            estimated_tokens = len(prompt.split()) + len(content.split())
+                            estimated_tokens = len(user_prompt.split()) + len(content.split())
                             self._track_usage(estimated_tokens // 2, estimated_tokens // 2)
                             return content
                 except Exception as e:
@@ -253,7 +253,7 @@ class LLMService:
 
     def generate_structured_output(
         self,
-        prompt: str,
+        user_prompt: str,
         output_schema: Dict[str, Any],
         system_prompt: Optional[str] = None,
         temperature: float = 0.0,
@@ -273,7 +273,7 @@ class LLMService:
             Dict[str, Any]: Structured output matching the schema
         """
         json_prompt = f"""
-        {prompt}
+        {user_prompt}
 
         Respond with ONLY valid JSON that matches this schema:
         {json.dumps(output_schema, indent=2)}
