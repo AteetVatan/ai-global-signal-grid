@@ -379,7 +379,7 @@ class FlashpointLLMAgent(BaseAgent):
 
             # Generate response using LLM service
             response = self.llm_service.generate_text(
-                prompt=self.USER_PROMPT + f"\n\nContext:\n{context[:15000]}",
+                user_prompt=self.USER_PROMPT + f"\n\nContext:\n{context[:15000]}",
                 system_prompt=self.SYSTEM_PROMPT,
                 temperature=0.0,
             )
