@@ -32,6 +32,8 @@ class CountryNormalizer:
         names = set()
         for country in pycountry.countries:
             names.add(country.name.lower())
+            if country.name.lower() == "türkiye" or country.name.lower() == "turkey":
+                chk= "0"
             if hasattr(country, "official_name"):
                 names.add(country.official_name.lower())
             if hasattr(country, "common_name"):
@@ -129,8 +131,15 @@ class CountryNormalizer:
     def get_country_names_from_pycountry(self, names: List[str]) -> List[str]:
         """Return a list of normalized country names if they exist, otherwise return None."""
         #use is self.valid_names
-        return [
-            name for name in names if name in self.valid_names
+        
+        valid_names = [
+            name for name in names if name.lower() in self.valid_names
         ]
         
+        valid_names_var =[]
+        for name in names:
+            if name.lower() in COUNTRY_VARIATIONS or name.lower() in COUNTRY_VARIATIONS.values():
+               valid_names_var.append(name)
         
+               
+        return list(set(valid_names + valid_names_var))       
