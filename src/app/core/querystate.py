@@ -34,10 +34,11 @@ class FeedEntry(BaseModel):
     url: Optional[str] = None
     title: Optional[str] = None
     seendate: Optional[str] = None
-    domain: Optional[Dict[str, str]] = {}
+    domain: Optional[str] = None
     language: Optional[str] = None
     sourcecountry: Optional[str] = None
     description: Optional[str] = None
+    image: Optional[str] = None
 
 
 class QueryTranslated(BaseModel):
