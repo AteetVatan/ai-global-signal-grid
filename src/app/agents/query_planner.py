@@ -120,7 +120,7 @@ class QueryPlanner(BaseAgent):
             # queries = self.safe_flatten_queries(queries)
 
             if self.settings.debug:
-                max_queries = 3
+                max_queries = 10
             else:
                 max_queries = 1000
 
