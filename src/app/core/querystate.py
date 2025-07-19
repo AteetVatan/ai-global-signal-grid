@@ -81,9 +81,9 @@ class QueryState(BaseModel):
     )
     rss_urls: Optional[List[str]] = Field(None, description="List of RSS URLs")
     google_feed_entries: Optional[List[FeedEntry]] = Field(
-        None, description="List of google feed entries"
+        [], description="List of google feed entries"
     )
     gdelt_feed_entries: Optional[List[FeedEntry]] = Field(
-        None, description="List of gdeltfeed entries"
+        [], description="List of gdeltfeed entries"
     )
     
