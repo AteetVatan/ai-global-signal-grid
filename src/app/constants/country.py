@@ -16,7 +16,7 @@
 #
 # Contact: ab@masxai.com | MASXAI.com
 
-COUNTRY_VARIATIONS = {
+ONE_WAY_COUNTRY_VARIATIONS = {
     "usa": "United States",
     "us": "United States",
     "u.s.": "United States",
@@ -33,7 +33,6 @@ COUNTRY_VARIATIONS = {
     "britain": "United Kingdom",
     "russia": "Russian Federation",
     "russian federation": "Russian Federation",
-    "iran": "Iran",
     "persia": "Iran",
     "syria": "Syrian Arab Republic",
     "venezuela": "Venezuela, Bolivarian Republic of",
@@ -52,6 +51,9 @@ COUNTRY_VARIATIONS = {
     "gaza": "Palestine, State of",
     "burma": "Myanmar",
     "czech republic": "Czechia",
+    "czechia": "Czechia",
+    "czech": "Czechia",
+    "Czechia": "czech",
     "ivory coast": "Côte d'Ivoire",
     "cote d'ivoire": "Côte d'Ivoire",
     "swaziland": "Eswatini",
@@ -79,3 +81,22 @@ COUNTRY_VARIATIONS = {
     "holland": "Netherlands",
     "slovak republic": "Slovakia",
 }
+
+def build_bidirectional_map(original_map: dict) -> dict:
+    bidirectional = {}
+
+    for k, v in original_map.items():
+        k_l = k.lower().strip()
+        v_l = v.lower().strip()
+
+        # Primary direction
+        if k_l not in bidirectional:
+            bidirectional[k_l] = v_l
+
+        # Safe reverse direction (don't overwrite canonical names)
+        if v_l not in bidirectional:
+            bidirectional[v_l] = k_l
+
+    return bidirectional
+
+COUNTRY_VARIATIONS = build_bidirectional_map(ONE_WAY_COUNTRY_VARIATIONS)
