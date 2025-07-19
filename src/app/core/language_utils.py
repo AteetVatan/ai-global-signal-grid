@@ -32,4 +32,18 @@ class LanguageUtils:
    # get language code from language name
     @staticmethod
     def get_language_code(language_name: str) -> str:
-        return pycountry.languages.get(name=language_name).alpha_2
+        try:
+            # Exact match
+            lang = pycountry.languages.get(name=language_name)
+            if lang and hasattr(lang, 'alpha_2'):
+                return lang.alpha_2
+
+            # Fuzzy fallback
+            matches = pycountry.languages.search_fuzzy(language_name)
+            if matches and hasattr(matches[0], 'alpha_2'):
+                return matches[0].alpha_2
+        except LookupError:
+            return None
+        except Exception as e:
+            print(f"[get_language_code] Error for '{language_name}': {e}")
+            return None
