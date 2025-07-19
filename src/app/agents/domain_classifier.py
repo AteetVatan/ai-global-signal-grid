@@ -35,7 +35,6 @@ from .base import BaseAgent, AgentResult
 from ..services.llm_service import LLMService
 from ..core.exceptions import AgentException
 
-
 class DomainClassifier(BaseAgent):
     """
     Agent for classifying content into geopolitical domains.
@@ -94,6 +93,7 @@ class DomainClassifier(BaseAgent):
                 system_prompt="You are a geopolitical taxonomy expert.",
                 temperature=0.0,  # Deterministic classification
             )
+            
 
             # Parse domains from response
             domains = self._parse_domains(response)
