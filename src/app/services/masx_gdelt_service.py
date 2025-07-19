@@ -95,6 +95,7 @@ class MasxGdeltService:
 
         try:
             response = requests.post(self.BASE_URL + self.ENDPOINT, json=payload, headers=self.headers)
+            time.sleep(2)
             response.raise_for_status()
             return safe_json_loads(response.text)
         except requests.RequestException as e:
