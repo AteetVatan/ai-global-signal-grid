@@ -89,13 +89,19 @@ class CountryNormalizer:
         """
         try:
             country = pycountry.countries.get(name=country_name)
-            if country:
+            if country and hasattr(country, 'alpha_2'):
                 return country.alpha_2
-            # Fallback: fuzzy search
+
+            # Fuzzy match fallback
             matches = pycountry.countries.search_fuzzy(country_name)
-            return matches[0].alpha_2 if matches else None
+            if matches and hasattr(matches[0], 'alpha_2'):
+                return matches[0].alpha_2
         except LookupError:
-            return ""
+            return None
+        except Exception as e:
+            # Optional: log error
+            print(f"[country_name_to_alpha2] Failed for {country_name}: {e}")
+            return None
 
     def get_coco_country_name(
         self, name: str, return_all: bool = False
