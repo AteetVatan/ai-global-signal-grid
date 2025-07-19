@@ -28,11 +28,13 @@ Usage: from app.core.utils import generate_run_id, retry_with_backoff, measure_e
 import time
 import uuid
 import re
+from ast import literal_eval
 import httpx
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
+import json
 
 from .exceptions import ExternalServiceException
 
@@ -148,7 +150,6 @@ def retry_with_backoff(
 
     return decorator
 
-
 # @contextmanager --Python decorator that lets you write your own with blocks.
 @contextmanager
 def measure_execution_time(operation_name: str = "operation"):
@@ -179,13 +180,81 @@ def safe_json_loads(json_str: str, default: Any = None) -> Any:
     Returns:
         Parsed JSON object or default value
     """
-    import json
-
     try:
-        return json.loads(json_str)
-    except (json.JSONDecodeError, TypeError):
-        return default
+        return safe_json_parse(json_str)
+    except Exception as e:
+        return e  # Catch and return ANY exception
 
+
+
+def safe_json_parse(response: Union[str, Any]) -> Any:
+    """
+    Safely parses potentially malformed LLM output into a valid JSON object.
+    Applies minimal intervention only when needed.
+    """
+    if not isinstance(response, str):
+        return response
+
+    # Quick parse attempt
+    try:
+        return json.loads(response)
+    except Exception:
+        pass  # Proceed with cleanup only if initial parse fails
+
+    # Step 1: Remove any LLM intro text
+    lines = response.strip().splitlines()
+    json_lines = []
+    capture = False
+    for line in lines:
+        if line.strip().startswith("[") or line.strip().startswith("{"):
+            capture = True
+        if capture:
+            json_lines.append(line)
+
+    raw = "\n".join(json_lines).strip()
+
+    # Step 2: Try parsing again (raw may now be clean)
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+
+    # Step 3: Clean known issues
+    # Fix trailing commas
+    raw = re.sub(r",\s*([\]}])", r"\1", raw)
+
+    # Quote unquoted keys
+    raw = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)(\s*):', r'\1"\2"\3:', raw)
+
+    # Replace single quotes with double quotes (only if no double quotes exist)
+    if '"' not in raw and "'" in raw:
+        raw = raw.replace("'", '"')
+
+    # Remove smart characters or bad escapes
+    raw = raw.encode("utf-8", "ignore").decode("utf-8")
+
+    # Step 4: Try parsing again
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+
+    # Step 5: Last resort trimming
+    if raw.count("{") > 0 and raw.count("}") > 0:
+        last_curly = raw.rfind("}")
+        raw_trimmed = raw[:last_curly + 1]
+        try:
+            return json.loads(raw_trimmed)
+        except Exception:
+            pass
+
+    # Step 6: Literal eval fallback
+    try:
+        return literal_eval(raw)
+    except Exception as e:
+        print("Final parse failed. Input preview:\n", raw[:500])
+        raise ValueError(f"Could not parse input as JSON or Python dict: {e}")
+        
 
 def chunk_list(lst: list, chunk_size: int) -> list:
     """
@@ -197,4 +266,3 @@ def chunk_list(lst: list, chunk_size: int) -> list:
         List of chunks
     """
     return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
-
