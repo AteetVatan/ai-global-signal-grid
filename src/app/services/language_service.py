@@ -132,8 +132,9 @@ class LanguageService:
         # Try resolving via country code
         try:
             country = pycountry.countries.search_fuzzy(entity_title)[0]
-            from_country = cls.get_languages_for_country_code(country.alpha_2)
-            languages.extend(from_country)
+            if country and hasattr(country, 'alpha_2'):
+                from_country = cls.get_languages_for_country_code(country.alpha_2)
+                languages.extend(from_country)
         except LookupError:
             pass
 
