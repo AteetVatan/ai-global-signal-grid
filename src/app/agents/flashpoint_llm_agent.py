@@ -44,6 +44,7 @@ from ..services.token_tracker import get_token_tracker
 from ..config.logging_config import get_logger
 from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
+from ..core.utils import safe_json_loads
 
 
 class FlashpointLLMAgent(BaseAgent):
@@ -415,26 +416,31 @@ class FlashpointLLMAgent(BaseAgent):
         Returns:
             FlashpointDataset of validated flashpoints or None if invalid
         """
-        try:
-            # Clean response (remove markdown code blocks if present)
-            cleaned_response = response.strip()
-            if cleaned_response.startswith("```json"):
-                cleaned_response = cleaned_response[7:]
-            if cleaned_response.endswith("```"):
-                cleaned_response = cleaned_response[:-3]
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Clean response (remove ```json ... ``` wrappers)
+                cleaned_response = response.strip()
+                if cleaned_response.startswith("```json"):
+                    cleaned_response = cleaned_response[7:]
+                if cleaned_response.endswith("```"):
+                    cleaned_response = cleaned_response[:-3]
 
-            # Parse JSON
-            data = json.loads(cleaned_response.strip())
+                # Parse JSON
+                data = safe_json_loads(cleaned_response.strip())
 
-            # Validate with Pydantic
-            flashpoint_list = FlashpointDataset.model_validate(data)
-            return flashpoint_list
+                # Validate with Pydantic model
+                flashpoint_list = FlashpointDataset.model_validate(data)
+                return flashpoint_list
 
-        except (json.JSONDecodeError, ValidationError) as e:
-            self.logger.warning(
-                "JSON validation failed", error=str(e), response_preview=response[:200]
-            )
-            return None
+            except (json.JSONDecodeError, ValidationError) as e:
+                self.logger.warning(
+                    f"[Attempt {attempt}/{max_attempts}] JSON validation failed",
+                    error=str(e),
+                    response_preview=response[:200]
+                )
+                if attempt == max_attempts:
+                    return None  #Final failure
 
     def _process_flashpoints(
         self,
