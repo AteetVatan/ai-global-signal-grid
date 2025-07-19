@@ -48,7 +48,7 @@ from ..config.settings import get_settings
 from ..core.flashpoint import FlashpointDataset, FlashpointItem
 from ..core.querystate import QueryState
 from ..core.flashpointstore import FlashpointStore
-from ..services import PingApisService
+from ..services import PingApisService, FlashpointDatabaseService, FlashpointRecord, FeedRecord
 
 class MASXOrchestrator:
     """
@@ -70,7 +70,8 @@ class MASXOrchestrator:
         self._initialize_agents()
         self.flashpoint_store = FlashpointStore()
         self.ping_apis_service = PingApisService()
-
+        self.flashpoint_db_service = FlashpointDatabaseService()    
+        
     def _initialize_agents(self):
         """Initialize all available agents."""
         try:
@@ -696,31 +697,68 @@ class MASXOrchestrator:
     def _fan_in_flashpoints(self, state: MASXState) -> MASXState:
         """
         Fan-in node: aggregate all individual flashpoint results from FlashpointStore
-        and store the final flashpoints to supabase db
+        and store the final flashpoints + feeds to Supabase DB.
         """
-        store = self.flashpoint_store  # assumes set in __init__
 
+        store = self.flashpoint_store
+        run_id = state.workflow_id[0] if state.workflow_id else "unknown_run"
         all_results = store.get_items()
         state.data["final_data"] = all_results
-        
-        
-        
-        # important
-        # here we will strore all the flashpoints + feed to the supapabase db
-        # ----> store the flashpoints to supabase db
-        # ----> store the feed to supabase db
-        # Optionally reset store to prepare for next run
-        
-        
-        for flashpoint in all_results:
-            # here we will store the flashpoint to the supabase db
-            # here we will store the feed to the supabase db
-            pass
-         
-        
-        store.clear()
 
+        # Define inner async function
+        async def store_flashpoints_and_feeds():
+            async with self.flashpoint_db_service as db:
+                # Step 1: Drop today's tables
+                try:
+                    await db.drop_daily_tables(datetime.utcnow())
+                    self.logger.info("[DB Reset] Dropped today's flashpoint and feed tables.")
+                except Exception as e:
+                    self.logger.warning(f"[DB Reset Failed] Could not drop tables: {e}")
+
+                # Step 2: Store all flashpoints and associated feeds
+                for fp_item in all_results:
+                    try:
+                        flashpoint_record = FlashpointRecord(
+                            title=fp_item.title,
+                            description=fp_item.description,
+                            entities=fp_item.entities,
+                            domains=fp_item.domains,
+                            run_id=run_id,
+                        )
+                        flashpoint_id = await db.store_flashpoint(flashpoint_record, run_id)
+                        
+                        
+                        # now store all feed entries for the flashpoint
+                        
+
+                        feed_records = [
+                            FeedRecord(
+                                flashpoint_id=flashpoint_id,
+                                url=feed.url,
+                                title=feed.title,
+                                seendate=feed.seendate,
+                                domain=feed.domain,
+                                language=feed.language,
+                                sourcecountry=feed.sourcecountry,
+                                description=feed.description,
+                                image=feed.image,
+                            )
+                            for feed in fp_item.feed_entries
+                        ]
+
+                        if feed_records:
+                            await db.store_feed_entries(flashpoint_id, feed_records)
+
+                    except Exception as e:
+                        self.logger.error(f"[Store Error] Flashpoint/feeds failed: {e}")
+
+        # Execute the async inner function from sync context
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(store_flashpoints_and_feeds())
+
+        store.clear()
         return state
+
 
     
     
