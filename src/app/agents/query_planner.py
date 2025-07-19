@@ -38,9 +38,11 @@ from ..config.logging_config import get_agent_logger
 import re
 import json
 import re
+import time
 from typing import Any, List, Dict
 from ..core.querystate import QueryState, QueryTranslated
 from ..config.settings import get_settings
+from ..core.utils import safe_json_loads
 
 
 class QueryPlanner(BaseAgent):
@@ -181,7 +183,7 @@ class QueryPlanner(BaseAgent):
         domains = input_data.get("domains", [])
 
         prompt = f"""
-        You are a geopolitical news analyst. Your task is to generate 1000 search queries that people might use to find news related to a global flashpoint.
+        You are a geopolitical news analyst. Your task is to generate 100 search queries that people might use to find news related to a global flashpoint.
         Use diverse perspectives: military, economic, cultural, religious, tech, environmental, migration, ideological, legal, civilizational.
         Include synonyms, abbreviations, slang, location names, and domain-specific terms.
         Each query should be short (max 6 words), realistic, and phrased the way a journalist, civilian, policymaker, activist, or intelligence analyst might search.        
@@ -197,24 +199,46 @@ class QueryPlanner(BaseAgent):
         - entities: List of involved countries from the query example: ["Iran", "Israel"].
         """
         # - language: List of ISO 639-1 language codes associated with those countries example: ["fa", "he"].
-        response = self.llm_service.generate_text(prompt)
+        #response = self.llm_service.generate_text(prompt)
 
-        # Parse response and format queries
+        max_attempts = 3
         queries = []
-        try:
-            # Simple parsing - in production, use proper JSON parsing
-            parsed = json.loads(response)
-            queries = self.validate_and_fix_query_response(parsed)
-        except Exception as e:
-            self.logger.warning(f"Failed to parse LLM response: {e}")
-            # Fallback to basic queries
-            queries = [
-                {
-                    "query": f"{domains} news",
-                    "source": "google_news",
-                    "domains": domains,
-                }
-            ]
+
+        for attempt in range(max_attempts):
+            try:
+                response = self.llm_service.generate_text(prompt)                
+                parsed = safe_json_loads(response)
+                # if len(parsed) == 0:
+                #     self.logger.warning(f"Attempt {attempt + 1} failed to parse LLM response")
+                #     continue
+                
+                queries_generated: List[Dict[str, Any]] = self.validate_and_fix_query_response(parsed)
+
+                #Deduplicate only based on the 'query' field
+                seen_queries = set()
+                unique_queries = []
+                for q in queries_generated:
+                    q_text = q.get("query")
+                    if q_text and q_text not in seen_queries:
+                        seen_queries.add(q_text)
+                        unique_queries.append(q)
+
+                if len(unique_queries) >= 5:
+                    queries = unique_queries
+                    break  # Exit retry loop
+                else:
+                    self.logger.info(f"Attempt {attempt + 1}: only {len(unique_queries)} unique queries, retrying...")
+
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt + 1} failed to parse LLM response: {e}")
+                time.sleep(2)
+        if not queries:
+            self.logger.warning("Falling back to default query due to repeated LLM failures.")
+            queries = [{
+                "query": f"{domains} news",
+                "source": "google_news",
+                "domains": domains,
+            }]
 
         return queries
 
@@ -244,49 +268,52 @@ class QueryPlanner(BaseAgent):
         - locations: Geographic locations to focus on
         - description: Brief description of what this query targets
         """
+        
+        max_attempts = 3
+        
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.llm_service.generate_text(prompt)
 
-        response = self.llm_service.generate_text(prompt)
+                try:
+                    parsed = safe_json_loads(response)
+                except Exception as e:
+                    self.logger.warning(f"[Attempt {attempt}] Failed to parse JSON: {e}, preview: {response[:200]}")
+                    continue  # Retry JSON parsing
 
-        # Parse response and format queries
-        queries = []
-        try:
-            parsed = json.loads(response)  # Proper JSON parsing
-            if isinstance(parsed, list):
-                for item in parsed:
-                    keywords = item.get("keywords", [])
-                    themes = item.get("themes", [])
-                    locations = item.get("locations", [])
-                    description = item.get("description", "")
-
-                    if isinstance(keywords, list) and keywords:
-                        queries.append(
-                            {
+                # Must be a list of valid dicts with non-empty keywords
+                if isinstance(parsed, list):
+                    queries = []
+                    for item in parsed:
+                        keywords = item.get("keywords", [])
+                        if isinstance(keywords, list) and keywords:
+                            queries.append({
                                 "keywords": keywords,
-                                "themes": themes,
-                                "locations": locations,
-                                "description": description,
+                                "themes": item.get("themes", []) if isinstance(item.get("themes", []), list) else [],
+                                "locations": item.get("locations", []) if isinstance(item.get("locations", []), list) else [],
+                                "description": item.get("description", "") if isinstance(item.get("description", ""), str) else "",
                                 "domains": domains,
                                 "source": "gdelt",
-                            }
-                        )
-            else:
-                print("[ERROR] Parsed response is not a list.")
-        except json.JSONDecodeError as e:
-            print(f"[ERROR] Failed to parse JSON from response: {e}")
-        except Exception as e:
-            self.logger.warning(f"Failed to parse LLM response: {e}")
-            # Fallback to basic queries
-            queries = [
-                {
-                    "keywords": [domains],
-                    "source": "gdelt",
-                    "domains": domains,
-                    "themes": [],
-                    "locations": [],
-                }
-            ]
+                            })
 
-        return queries
+                    if queries:
+                        return queries
+
+                self.logger.info(f"[Attempt {attempt}] No valid query objects found. Retrying...")
+
+            except Exception as e:
+                self.logger.warning(f"[Attempt {attempt}] LLM call failed: {e}")
+
+            # Fallback if all attempts fail
+            self.logger.warning("[LLM] All attempts failed. Returning fallback query.")
+            return [{
+                "keywords": [domains],
+                "source": "gdelt",
+                "domains": domains,
+                "themes": [],
+                "locations": [],
+                "description": f"Fallback query for domain: {domains}"
+            }]
 
     def _check_query_history(self, queries: List[Dict[str, Any]]) -> None:
         """Check recent query history to avoid duplicates."""
