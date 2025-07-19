@@ -30,7 +30,7 @@ Usage: from app.services.web_search import WebSearchService
 
 import requests
 from typing import List, Dict, Any, Optional, Tuple
-from newspaper import Article
+from newspaper import Article, Config
 import time
 
 from ..config.settings import get_settings
@@ -250,9 +250,13 @@ class WebSearchService:
         """
         try:
             self.logger.debug(f"Extracting article from: {url}")
-
-            article = Article(url)
+            user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            config = Config()
+            config.browser_user_agent = user_agent
+            config.request_timeout = 10
+            article = Article(url, config=config)
             article.download()
+            time.sleep(2)
             article.parse()
 
             if article.text and len(article.text.strip()) > 100:
