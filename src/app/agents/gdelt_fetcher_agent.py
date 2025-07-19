@@ -44,6 +44,7 @@ from ..services.llm_service import LLMService
 from ..core import DateUtils
 from ..services import FeedParserService
 from ..config.settings import get_settings
+from ..core.utils import safe_json_loads
 
 class GdeltFetcherAgent(BaseAgent):
     """
@@ -126,6 +127,14 @@ class GdeltFetcherAgent(BaseAgent):
                         continue # if no countries, skip this query
 
                 combo_list = []
+                if len(query.entities) > 0:
+                    default_combo = {
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "maxrecords": maxrecords,
+                        "keyword": ", ".join(query.entities)
+                    }
+                    combo_list.append(default_combo)
 
                 for r in range(1, len(query.entities) + 1):
                     for keyword_combo in combinations(query.entities, r):
@@ -147,6 +156,7 @@ class GdeltFetcherAgent(BaseAgent):
                                 "country": country
                             }
                             combo_list.append(combo)
+                            
 
                 if not combo_list:
                     query.gdelt_feed_entries = []
@@ -155,8 +165,7 @@ class GdeltFetcherAgent(BaseAgent):
                 # Fetch in batch (threaded)
                 #if self.settings.debug:
                     #combo_list = combo_list[:3]
-                results = self.masx_gdelt_service.fetch_articles_batch_threaded(combo_list)
-
+                results = self.masx_gdelt_service.fetch_articles_batch_threaded(combo_list)             
                 # Convert articles to FeedEntry
                 query.gdelt_feed_entries = self.feed_parser_service.process_gdelt_feed_entries(results)
 
@@ -190,20 +199,28 @@ class GdeltFetcherAgent(BaseAgent):
         Which countries are geopolitically related?
         """
 
-        try:
-            response = self.llm_service.generate_text(
-                user_prompt=user_prompt.strip(),
-                system_prompt=system_prompt,
-                temperature=0,
-                max_tokens=512
-            )
-            result = self.validate_related_countries_json(response)
-            return result
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.llm_service.generate_text(
+                    user_prompt=user_prompt.strip(),
+                    system_prompt=system_prompt,
+                    temperature=0,
+                    max_tokens=512
+                )
 
-        except Exception as e:
-            self.logger.warning(f"LLM failed to infer related countries: {e}")
-            return []
-            
+                result = self.validate_related_countries_json(response)
+                if result:
+                    return result 
+
+                self.logger.info(f"[Attempt {attempt}] Empty or invalid country list, retrying...")
+
+            except Exception as e:
+                self.logger.warning(f"[Attempt {attempt}] LLM failed to infer related countries: {e}")
+
+        return []
+    
+    
     def validate_related_countries_json(self, response_text: str) -> list[str]:
         try:
             # Extract first JSON object using regex
@@ -212,7 +229,7 @@ class GdeltFetcherAgent(BaseAgent):
                 raise ValueError("No JSON object found in response.")
 
             json_part = match.group(0)
-            data = json.loads(json_part)
+            data = safe_json_loads(json_part)
 
             if not isinstance(data, dict):
                 raise ValueError("Response is not a JSON object.")

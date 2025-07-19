@@ -21,9 +21,10 @@ import requests
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-
+import time
 from ..config.settings import get_settings
 from ..config.logging_config import get_logger
+from ..core.utils import retry_with_backoff, safe_json_loads
 
 
 class MasxGdeltService:
@@ -52,32 +53,7 @@ class MasxGdeltService:
             return 10
         return 3
 
-    def fetch_gdelt_articles(
-        self,
-        keyword: str,
-        start_date: str,
-        end_date: str,
-        country: str,
-        maxrecords: int = 250
-    ) -> List[Dict]:
-        """
-        Sends a POST request to fetch articles from MASX GDELT API.
-        """
-        payload = {
-            "keyword": keyword,
-            "start_date": start_date,
-            "end_date": end_date,
-            "country": country,
-            "maxrecords": maxrecords
-        }
-
-        try:
-            response = requests.post(self.BASE_URL + self.ENDPOINT, json=payload, headers=self.headers)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            self.logger.error(f"MASX GDELT API error [{keyword} – {country}]: {e}")
-            return []
+    
 
     def extract_gdelt_article_data(self, articles: List[Dict]) -> List[Dict]:
         """
@@ -95,15 +71,45 @@ class MasxGdeltService:
             }
             for a in articles
         ]
+    
+    @retry_with_backoff(max_attempts=5, base_delay=5)
+    def fetch_gdelt_articles(
+        self,
+        keyword: str,
+        start_date: str,
+        end_date: str,
+        country: str,
+        maxrecords: int = 250
+    ) -> List[Dict]:
+        """
+        Sends a POST request to fetch articles from MASX GDELT API.
+        """
+        # Beauty
+        payload = {k: v for k, v in {
+            "keyword": keyword,
+            "start_date": start_date,
+            "end_date": end_date,
+            "country": country,
+            "maxrecords": maxrecords
+        }.items() if v}
+
+        try:
+            response = requests.post(self.BASE_URL + self.ENDPOINT, json=payload, headers=self.headers)
+            response.raise_for_status()
+            return safe_json_loads(response.text)
+        except requests.RequestException as e:
+            self.logger.error(f"MASX GDELT API error [{keyword} – {country}]: {e}")
+            time.sleep(2)
+            raise e
 
     def _fetch_one_combo(self, combo: Dict) -> Tuple[Dict, Optional[List[Dict]]]:
         """
         Internal helper to fetch one keyword-country-date combo.
         """
-        keyword = combo["keyword"]
-        country = combo["country"]
-        start_date = combo["start_date"]
-        end_date = combo["end_date"]
+        keyword = combo.get("keyword", "")
+        country = combo.get("country", "")
+        start_date = combo.get("start_date", "")
+        end_date = combo.get("end_date", "")
         maxrecords = combo.get("maxrecords", 250)
         is_valid, errors = self.validate_search_query(combo)
         if not is_valid:
@@ -129,7 +135,7 @@ class MasxGdeltService:
 
             for future in as_completed(future_to_combo):
                 combo, articles = future.result()
-                key = f"{combo['keyword']}_{combo['country']}"
+                key = f"{combo.get('keyword', '')}_{combo.get('country', '')}"
                 if articles:
                     simplified = self.extract_gdelt_article_data(articles)
                     results[key] = simplified
@@ -143,7 +149,7 @@ class MasxGdeltService:
     def validate_search_query(self, data: dict) -> tuple[bool, list[str]]:
         errors = []
 
-        required_fields = ["keyword", "start_date", "end_date", "country", "maxrecords"]
+        required_fields = ["keyword", "start_date", "end_date", "maxrecords"]
         for field in required_fields:
             if field not in data:
                 errors.append(f"Missing field: {field}")
@@ -176,8 +182,8 @@ class MasxGdeltService:
             errors.append("end_date cannot be earlier than start_date.")
 
         # Country check
-        if not isinstance(data["country"], str) or not data["country"].strip():
-            errors.append("Country must be a non-empty string.")
+        # if not isinstance(data["country"], str) or not data["country"].strip():
+        #     errors.append("Country must be a non-empty string.")
 
         # Maxrecords check
         if not isinstance(data["maxrecords"], int) or not (1 <= data["maxrecords"] <= 1000):
