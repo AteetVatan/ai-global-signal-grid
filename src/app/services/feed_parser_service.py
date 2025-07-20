@@ -37,8 +37,8 @@ class FeedParserService:
         self.min_results = min_results
         self.recent_days = 1
         self.settings = get_settings()
-        if self.settings.debug:
-            self.recent_days = 10
+        # if self.settings.debug:
+        #     self.recent_days = 10
         self.max_workers = self._decide_workers()
 
     def _decide_workers(self) -> int:
@@ -72,32 +72,37 @@ class FeedParserService:
             feed_entries = []
             for key, articles in entries.items():
                 for article in articles:
-                    seen_dt = self._parse_date(article.get("seen_date", ""))
-                    if seen_dt and seen_dt < datetime.now(seen_dt.tzinfo) - timedelta(
-                        days=self.recent_days
-                    ):  # from last 24 hour
-                        continue  # Skip old entries
-                    
-                    # url=article.get("url", "")
-                    # title=article.get("title")
-                    # seendate=DateUtils.convert_iso_to_date(article.get("seen_date", ""))
-                    # image=article.get("image", "")
-                    # domain=article.get("domain", "")
-                    # description=article.get("title","")
-                    # language=LanguageUtils.get_language_code(article.get("language", ""))
-                    # sourcecountry=article.get("country", "")
-                    
-                    feed_entry = FeedEntry(
-                        url=article.get("url", ""),
-                        title=article.get("title", ""),
-                        seendate=DateUtils.convert_iso_to_date(article.get("seen_date", "")),
-                        domain=article.get("domain", ""),
-                        description=article.get("title",""),
-                        language=LanguageUtils.get_language_code(article.get("language", "")),
-                        sourcecountry=article.get("country", ""),
-                        image=article.get("image", "")
-                    )
-                    feed_entries.append(feed_entry)               
+                    try:
+                        seen_dt = self._parse_date(article.get("seen_date", ""))
+                        if seen_dt and seen_dt < datetime.now(seen_dt.tzinfo) - timedelta(
+                            days=self.recent_days
+                        ):  # from last 24 hour
+                            continue  # Skip old entries
+                        
+                        # url=article.get("url", "")
+                        # title=article.get("title")
+                        # seendate=DateUtils.convert_iso_to_date(article.get("seen_date", ""))
+                        # image=article.get("image", "")
+                        # domain=article.get("domain", "")
+                        # description=article.get("title","")
+                        # language=LanguageUtils.get_language_code(article.get("language", ""))
+                        # sourcecountry=article.get("country", "")
+                        
+                        feed_entry = FeedEntry(
+                            url=article.get("url", ""),
+                            title=article.get("title", ""),
+                            seendate=DateUtils.convert_iso_to_date(article.get("seen_date", "")),
+                            domain=article.get("domain", ""),
+                            description=article.get("title",""),
+                            language=LanguageUtils.get_language_code(article.get("language", "")),
+                            sourcecountry=article.get("country", ""),
+                            image=article.get("image", "")
+                        )
+                        feed_entries.append(feed_entry)
+                    except Exception as e:
+                        logger.warning(f"Failed to process GDELT article {article.get('url', 'unknown')}: {e}")
+                        continue  # Skip this article and continue with others
+                        
         except Exception as e:
             logger.error(f"Error processing GDELT feed entries: {e}")
             return []
