@@ -15,10 +15,49 @@ class DateUtils:
     @staticmethod
     def convert_iso_to_date(iso_str: str) -> str:
         """
-        Convert ISO 8601 date string to YYYY-MM-DD format.
+        Convert various ISO date string formats to YYYY-MM-DD format.
+        Handles multiple formats that GDELT API might return.
         """
-        dt = datetime.strptime(iso_str, "%Y%m%dT%H%M%SZ")
-        return dt.strftime("%Y-%m-%d")
+        if not iso_str or not isinstance(iso_str, str):
+            return ""
+            
+        try:
+            # Try the original expected format first
+            dt = datetime.strptime(iso_str, "%Y%m%dT%H%M%SZ")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+        try:
+            # Try standard ISO 8601 format
+            dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+        try:
+            # Try ISO 8601 without timezone
+            dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%S")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+        try:
+            # Try just date format
+            dt = datetime.strptime(iso_str, "%Y-%m-%d")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+        try:
+            # Try compact format without T
+            dt = datetime.strptime(iso_str, "%Y%m%d%H%M%S")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+        # If all parsing attempts fail, return empty string
+        return ""
 
     @staticmethod    
     def convert_rfc822_to_iso_date(date_str: str) -> str:
