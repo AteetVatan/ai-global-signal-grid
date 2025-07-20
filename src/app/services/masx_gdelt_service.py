@@ -21,6 +21,7 @@ import requests
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import random
 import time
 from ..config.settings import get_settings
 from ..config.logging_config import get_logger
@@ -36,7 +37,9 @@ class MasxGdeltService:
         self.settings = get_settings()
         self.logger = get_logger(__name__)
         self.API_KEY = self.settings.gdelt_api_key
-        self.BASE_URL = self.settings.GDELT_API_URL
+        #self.BASE_URL = self.settings.GDELT_API_URL     
+        self._set_base_urls()
+        
         self.ENDPOINT = "/api/articles"
 
         self.headers = {
@@ -44,6 +47,19 @@ class MasxGdeltService:
             "Content-Type": "application/json"
         }
         self.max_workers = self._decide_workers()
+        
+    def _set_base_urls(self):
+        self.base_urls =[]
+        self.base_urls.append(self.settings.GDELT_API_URL)
+        self.base_urls.append(self.settings.GDELT_API_URL_1)
+    
+    @property
+    def base_url(self):
+        #randomly select a base url
+        return random.choice(self.base_urls)
+   
+    
+    
 
     def _decide_workers(self) -> int:
         cores = os.cpu_count()
@@ -53,6 +69,29 @@ class MasxGdeltService:
             return 10
         return 3
 
+    def test_connectivity(self) -> bool:
+        """
+        Test connectivity to the GDELT API endpoint.
+        Returns True if connection is successful, False otherwise.
+        """
+        try:
+            # Simple HEAD request to test connectivity
+            response = requests.head(
+                self.base_url, 
+                headers=self.headers,
+                timeout=(5, 10)  # Short timeout for connectivity test
+            )
+            self.logger.info(f"GDELT API connectivity test successful: {response.status_code}")
+            return True
+        except requests.Timeout:
+            self.logger.error("GDELT API connectivity test failed: Timeout")
+            return False
+        except requests.ConnectionError as e:
+            self.logger.error(f"GDELT API connectivity test failed: Connection error - {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"GDELT API connectivity test failed: {e}")
+            return False
     
 
     def extract_gdelt_article_data(self, articles: List[Dict]) -> List[Dict]:
@@ -94,10 +133,29 @@ class MasxGdeltService:
         }.items() if v}
 
         try:
-            response = requests.post(self.BASE_URL + self.ENDPOINT, json=payload, headers=self.headers)
+            # Add timeout to prevent hanging
+            response = requests.post(
+                self.base_url + self.ENDPOINT, 
+                json=payload, 
+                headers=self.headers,
+                timeout=(10, 30)  # (connect_timeout, read_timeout)
+            )
             time.sleep(2)
             response.raise_for_status()
             return safe_json_loads(response.text)
+        except requests.Timeout as e:
+            self.logger.error(f"MASX GDELT API timeout for [{keyword} – {country}]: {e}")
+            raise e
+        except requests.ConnectionError as e:
+            self.logger.error(f"MASX GDELT API connection error for [{keyword} – {country}]: {e}")
+            raise e
+        except requests.HTTPError as e:
+            if response.status_code == 500:
+                self.logger.error(f"MASX GDELT API 500 error for [{keyword} – {country}]: {e}")
+                time.sleep(10) # TODO: remove this
+            else:
+                self.logger.error(f"HTTP error: {e} | Status: {response.status_code}")
+            raise e
         except requests.RequestException as e:
             self.logger.error(f"MASX GDELT API error [{keyword} – {country}]: {e}")
             time.sleep(2)
@@ -107,18 +165,25 @@ class MasxGdeltService:
         """
         Internal helper to fetch one keyword-country-date combo.
         """
-        keyword = combo.get("keyword", "")
-        country = combo.get("country", "")
-        start_date = combo.get("start_date", "")
-        end_date = combo.get("end_date", "")
-        maxrecords = combo.get("maxrecords", 250)
-        is_valid, errors = self.validate_search_query(combo)
-        if not is_valid:
-            self.logger.error(f"Invalid search query: {errors}")
-            return combo, []
+        try:
+            keyword = combo.get("keyword", "")
+            country = combo.get("country", "")
+            start_date = combo.get("start_date", "")
+            end_date = combo.get("end_date", "")
+            maxrecords = combo.get("maxrecords", 250)
+            is_valid, errors = self.validate_search_query(combo)
+            if not is_valid:
+                self.logger.error(f"Invalid search query: {errors}")
+                return combo, []
 
-        articles = self.fetch_gdelt_articles(keyword, start_date, end_date, country, maxrecords)
-        return combo, articles
+            articles = self.fetch_gdelt_articles(keyword, start_date, end_date, country, maxrecords)
+            return combo, articles
+        except (requests.Timeout, requests.ConnectionError) as e:
+            self.logger.error(f"[Connection/Timeout] Failed to fetch combo {combo}: {e}")
+            return combo, []
+        except Exception as e:
+            self.logger.error(f"[Exception] Failed to fetch combo {combo}: {e}", exc_info=True)
+            return combo, []
 
     def fetch_articles_batch_threaded(
         self, combos: List[Dict]
@@ -129,21 +194,30 @@ class MasxGdeltService:
         """
         results = {}
 
+        # Test connectivity before starting batch requests
+        # if not self.test_connectivity():
+        #     self.logger.error("GDELT API connectivity test failed. Skipping batch requests.")
+        #     return results
+
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_combo = {
                 executor.submit(self._fetch_one_combo, combo): combo for combo in combos
             }
 
-            for future in as_completed(future_to_combo):
-                combo, articles = future.result()
-                key = f"{combo.get('keyword', '')}_{combo.get('country', '')}"
-                if articles:
-                    simplified = self.extract_gdelt_article_data(articles)
-                    results[key] = simplified
-                    self.logger.info(f"[{key}] {len(simplified)} articles fetched.")
-                else:
+            for future in as_completed(future_to_combo):                
+                try:
+                    combo, articles = future.result()
+                    key = f"{combo.get('keyword', '')}_{combo.get('country', '')}"
+                    if articles:
+                        simplified = self.extract_gdelt_article_data(articles)
+                        results[key] = simplified
+                        self.logger.info(f"[{key}] {len(simplified)} articles fetched.")
+                    else:
+                        results[key] = []
+                        self.logger.warning(f"[{key}] No articles fetched.")
+                except Exception as e:
+                    self.logger.error(f"[{key}] Exception during fetch: {e}")
                     results[key] = []
-                    self.logger.warning(f"[{key}] No articles fetched.")
 
         return results
     

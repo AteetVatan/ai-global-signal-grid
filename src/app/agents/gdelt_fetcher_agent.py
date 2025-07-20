@@ -199,7 +199,7 @@ class GdeltFetcherAgent(BaseAgent):
         Which countries are geopolitically related?
         """
 
-        max_attempts = 3
+        max_attempts = 1 # TODO: remove this
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.llm_service.generate_text(
