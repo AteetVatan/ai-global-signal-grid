@@ -347,15 +347,15 @@ async def cancel_workflow(workflow_id: str):
     Returns:
         Cancellation status
     """
-    logger.info(f"Workflow cancellation requested: {run_id}")
+    logger.info(f"Workflow cancellation requested: {workflow_id}")
 
     try:
         # This would typically implement workflow cancellation logic
         # For now, return success
 
-        logger.info(f"Workflow cancelled: {run_id}")
+        logger.info(f"Workflow cancelled: {workflow_id}")
         return {
-            "run_id": run_id,
+            "workflow_id": workflow_id,
             "status": "cancelled",
             "message": "Workflow cancellation requested",
         }
