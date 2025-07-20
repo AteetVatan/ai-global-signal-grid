@@ -121,13 +121,13 @@ class QueryPlanner(BaseAgent):
             # queries validation
             # queries = self.safe_flatten_queries(queries)
 
-            if self.settings.debug:
-                max_queries = 10
-            else:
-                max_queries = 1000
+            # if self.settings.debug:
+            #     max_queries = 10
+            # else:
+            #     max_queries = 1000
 
             query_states = []
-            for query in queries[:max_queries]:
+            for query in queries:
                 entities = query.get("entities", [])
                 query_text = query.get("query", "")
 
