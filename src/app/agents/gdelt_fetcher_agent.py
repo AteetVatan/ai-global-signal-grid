@@ -128,7 +128,7 @@ class GdeltFetcherAgent(BaseAgent):
                         continue # if no countries, skip this query
 
                 combo_list = []
-                if len(query.entities) > 0:
+                if len(query.entities) > 1:
                     default_combo = {
                         "start_date": start_date,
                         "end_date": end_date,
