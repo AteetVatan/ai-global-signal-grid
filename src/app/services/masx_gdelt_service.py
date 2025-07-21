@@ -37,8 +37,8 @@ class MasxGdeltService:
         self.settings = get_settings()
         self.logger = get_logger(__name__)
         self.API_KEY = self.settings.gdelt_api_key
-        #self.BASE_URL = self.settings.GDELT_API_URL     
-        self._set_base_urls()
+        self.BASE_URL = self.settings.GDELT_API_URL     
+        #self._set_base_urls()
         
         self.ENDPOINT = "/api/articles"
 
@@ -48,18 +48,15 @@ class MasxGdeltService:
         }
         self.max_workers = self._decide_workers()
         
-    def _set_base_urls(self):
-        self.base_urls =[]
-        self.base_urls.append(self.settings.GDELT_API_URL)
-        self.base_urls.append(self.settings.GDELT_API_URL_1)
+    # def _set_base_urls(self):
+    #     self.base_urls =[]
+    #     self.base_urls.append(self.settings.GDELT_API_URL)
+    #     self.base_urls.append(self.settings.GDELT_API_URL_1)
     
-    @property
-    def base_url(self):
-        #randomly select a base url
-        return random.choice(self.base_urls)
-   
-    
-    
+    # @property
+    # def base_url(self):
+    #     #randomly select a base url
+    #     return random.choice(self.base_urls)      
 
     def _decide_workers(self) -> int:
         cores = os.cpu_count()
@@ -77,7 +74,7 @@ class MasxGdeltService:
         try:
             # Simple HEAD request to test connectivity
             response = requests.head(
-                self.base_url, 
+                self.BASE_URL, 
                 headers=self.headers,
                 timeout=(5, 10)  # Short timeout for connectivity test
             )
@@ -135,12 +132,12 @@ class MasxGdeltService:
         try:
             # Add timeout to prevent hanging
             response = requests.post(
-                self.base_url + self.ENDPOINT, 
+                self.BASE_URL + self.ENDPOINT, 
                 json=payload, 
                 headers=self.headers,
                 timeout=(10, 30)  # (connect_timeout, read_timeout)
             )
-            time.sleep(2)
+            #time.sleep(2)
             response.raise_for_status()
             return safe_json_loads(response.text)
         except requests.Timeout as e:
@@ -152,13 +149,13 @@ class MasxGdeltService:
         except requests.HTTPError as e:
             if response.status_code == 500:
                 self.logger.error(f"MASX GDELT API 500 error for [{keyword} – {country}]: {e}")
-                time.sleep(10) # TODO: remove this
+                #time.sleep(10) # TODO: remove this
             else:
                 self.logger.error(f"HTTP error: {e} | Status: {response.status_code}")
             raise e
         except requests.RequestException as e:
             self.logger.error(f"MASX GDELT API error [{keyword} – {country}]: {e}")
-            time.sleep(2)
+            #time.sleep(2)
             raise e
 
     def _fetch_one_combo(self, combo: Dict) -> Tuple[Dict, Optional[List[Dict]]]:
