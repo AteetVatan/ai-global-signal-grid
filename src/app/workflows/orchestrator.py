@@ -1,7 +1,7 @@
 # ┌───────────────────────────────────────────────────────────────┐
-# │  Copyright (c) 2025 Ateet Vatan Bahmani                      │
-# │  Project: MASX AI – Strategic Agentic AI System              │
-# │  All rights reserved.                                        │
+# │  Copyright (c) 2025 Ateet Vatan Bahmani                       │
+# │  Project: MASX AI – Strategic Agentic AI System               │
+# │  All rights reserved.                                         │
 # └───────────────────────────────────────────────────────────────┘
 #
 # MASX AI is a proprietary software system developed and owned by Ateet Vatan Bahmani.
@@ -78,6 +78,7 @@ class MASXOrchestrator:
             from ..agents import (
                 GoogleRssFeederAgent,
                 FlashpointLLMAgent,
+                FlashpointValidatorAgent,
                 DomainClassifier,
                 QueryPlanner,
                 LanguageAgent,
@@ -100,6 +101,7 @@ class MASXOrchestrator:
             self.agents = {
                 "google_rss_feeder_agent": GoogleRssFeederAgent(),
                 "flashpoint_llm_agent": FlashpointLLMAgent(),
+                "flashpoint_validator_agent": FlashpointValidatorAgent(),
                 "domain_classifier": DomainClassifier(),
                 "query_planner": QueryPlanner(),
                 "language_agent": LanguageAgent(),
@@ -138,8 +140,10 @@ class MASXOrchestrator:
         if workflow_type == "daily":  # normal signal processing flow
             return self._create_daily_workflow()
         elif workflow_type == "detection":  # anomaly detection
+            # TODO: add detection workflow case Fact check etc
             return self._create_detection_workflow()
         elif workflow_type == "trigger":  # re-execution loop until termination
+            # TODO: add trigger workflow case Fact check etc
             return self._create_trigger_workflow()
         else:
             raise WorkflowException(f"Unknown workflow type: {workflow_type}")
@@ -153,16 +157,16 @@ class MASXOrchestrator:
         per_flashpoint_rss = StateGraph(MASXState)
         per_flashpoint_rss.set_entry_point("domain_classification")
         
-        per_flashpoint_rss.add_node("domain_classification", self._run_domain_classifier)
-        per_flashpoint_rss.add_node("query_planning", self._run_query_planner)
+        per_flashpoint_rss.add_node("domain_classification", self._run_domain_classification)
+        per_flashpoint_rss.add_node("query_planning", self._run_query_planning)
         per_flashpoint_rss.add_node("language_agent", self._run_language_agent)
         per_flashpoint_rss.add_node("translation_agent", self._run_translation_agent)
         
         #_run_gdelt_feed_agent
-        per_flashpoint_rss.add_node("gdelt_feed_agent", self._run_gdelt_feed_agent)        
         per_flashpoint_rss.add_node("google_rss_feeder_agent", self._run_google_rss_feeder_agent)
+        per_flashpoint_rss.add_node("gdelt_feed_agent", self._run_gdelt_feed_agent)
         per_flashpoint_rss.add_node("feed_finalizer", self._run_feed_finalizer)   
-        #google_rss_feeder_agent is last node in per_flashpoint subgraph      
+       
                         
         
         # edges inside subgraph
@@ -173,7 +177,7 @@ class MASXOrchestrator:
         per_flashpoint_rss.add_edge("translation_agent", "google_rss_feeder_agent")
         per_flashpoint_rss.add_edge("google_rss_feeder_agent", "gdelt_feed_agent")
         per_flashpoint_rss.add_edge("gdelt_feed_agent", "feed_finalizer")        
-        per_flashpoint_rss.set_finish_point("feed_finalizer")        
+        per_flashpoint_rss.set_finish_point("feed_finalizer")
 
         # Compile the subgraph into a single node that can be mapped -----
         per_flashpoint_rss_subgraph = per_flashpoint_rss.compile()
@@ -184,6 +188,7 @@ class MASXOrchestrator:
         # --- Main workflow nodes ---
         workflow.add_node("start", self._start_workflow)
         workflow.add_node("flashpoint_detection", self._run_flashpoint_detection)
+        workflow.add_node("flashpoint_validator", self._run_flashpoint_validator)
         workflow.add_node("process_one_fp", per_flashpoint_rss_subgraph)
         workflow.add_node("fan_in_flashpoints", self._fan_in_flashpoints)
         workflow.add_node("end", self._end_workflow)
@@ -193,7 +198,8 @@ class MASXOrchestrator:
         # Graph Edges (no reducer merging needed since we use singleton)
         workflow.add_edge(START, "start")
         workflow.add_edge("start", "flashpoint_detection")
-        workflow.add_conditional_edges("flashpoint_detection", self._fan_out_flashpoints)
+        workflow.add_edge("flashpoint_detection", "flashpoint_validator")
+        workflow.add_conditional_edges("flashpoint_validator", self._fan_out_flashpoints)
         workflow.add_edge("process_one_fp", "fan_in_flashpoints")  # fan-in node reads singleton
         workflow.add_edge("fan_in_flashpoints", "end")
         workflow.add_edge("end", END)
@@ -276,7 +282,7 @@ class MASXOrchestrator:
     def _run_flashpoint_detection(self, state: MASXState) -> MASXState:
         """Run flashpoint detection step using FlashpointLLMAgent."""
         try:
-            if self.settings.debug:
+            if True:
 
                 # dummy agent result
                 result = AgentResult(success=True, data={"flashpoints": []})
@@ -284,7 +290,7 @@ class MASXOrchestrator:
 
                 # read json debug_data/flashpoint.json
                 with open(
-                    "src/app/debug_data/flashpoint.json", "r"
+                    "src/app/debug_data/flashpoint_20_07_2025.json", "r"
                 ) as f:  # check this path
                     result.data["flashpoints"] = json.load(f)
 
@@ -363,6 +369,65 @@ class MASXOrchestrator:
 
         return state
     
+    #_run_flashpoint_validator
+    
+    def _run_flashpoint_validator(self, state: MASXState) -> MASXState:
+        """Run flashpoint validator step using FlashpointValidatorAgent."""
+        try:          
+
+            state.workflow.current_step = "flashpoint_validator"
+
+            agent = self.agents.get("flashpoint_validator_agent")
+            if not agent:
+                raise WorkflowException("FlashpointValidatorAgent not available")
+
+
+            # Prepare input data for flashpoint detection
+            input_data = {
+                "flashpoints": state.data["all_flashpoints"]
+            }
+
+            # Run flashpoint detection
+            result = agent.run(input_data, workflow_id=state.workflow_id[0])
+
+            # Update state
+            # state.agents["flashpoint_llm_agent"] = agent.state
+            if result.success:
+                state.data["all_flashpoints"] = FlashpointDataset.model_validate(
+                    result.data["flashpoints"]
+                )
+                state.metadata["flashpoint_validator_stats"] = {
+                    "unrelated_count": len(result.data.get("unrelated", [])),
+                    "valid_count": len(result.data.get("flashpoints", [])),
+                }
+
+            state.workflow.current_step = "flashpoint_validator"
+
+            log_workflow_step(
+                self.logger,
+                "flashpoint_validator",
+                "flashpoint_validator",
+                input_data=input_data,
+                output_data=result.data,
+                workflow_id=state.workflow_id[0],
+            )
+
+            self.logger.info(
+                f"Flashpoint validator completed: {len(state.metadata.get('flashpoints', []))} flashpoints found",
+                workflow_id=state.workflow_id[0],
+                flashpoint_count=len(state.metadata.get("flashpoints", [])),
+                unrelated_count=len(state.metadata.get("unrelated", [])),
+                valid_count=len(state.metadata.get("flashpoints", [])),
+            )
+
+        except Exception as e:
+            state.errors.append(f"Flashpoint validator failed: {str(e)}")
+            self.logger.error(
+                f"Flashpoint validator error: {e}", workflow_id=state.workflow_id[0]
+            )
+
+        return state
+    
     # each flashpoint to parallel processing
     def _fan_out_flashpoints(self, state: MASXState):
         # ateet
@@ -383,14 +448,14 @@ class MASXOrchestrator:
             state_list.append(new_state)
         return [Send("process_one_fp", state) for state in state_list]
 
-    def _run_domain_classifier(self, state: MASXState) -> MASXState:
+    def _run_domain_classification(self, state: MASXState) -> MASXState:
         """Run domain classification step."""
         try:
             agent = self.agents.get("domain_classifier")
             if not agent:
                 raise WorkflowException("DomainClassifier agent not available")
 
-            if self.settings.debug and False:
+            if False:
                 # dummy agent result
                 flashpoint = FlashpointItem.model_validate(
                     state.data["current_flashpoint"]
@@ -431,7 +496,7 @@ class MASXOrchestrator:
 
         return state
 
-    def _run_query_planner(self, state: MASXState) -> MASXState:
+    def _run_query_planning(self, state: MASXState) -> MASXState:
         """Run query planning step."""
         try:
             agent = self.agents.get("query_planner")
@@ -620,7 +685,8 @@ class MASXOrchestrator:
                 raise WorkflowException("GdeltFeedAgent agent not available")
 
             # Flashpoint validation
-            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])
+            flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"])            
+            
             # Prepare input data
             input_data = {
                 "queries": flashpoint.queries,
@@ -657,6 +723,7 @@ class MASXOrchestrator:
         try:
             # Flashpoint validation
             flashpoint = FlashpointItem.model_validate(state.data["current_flashpoint"]) 
+           
             
             #go through all feed entries and remove duplicates
             #merge them and deduplicate
@@ -677,8 +744,9 @@ class MASXOrchestrator:
                         
                         
             flashpoint.feed_entries = feed_entries
-            #********************                       
-            self.flashpoint_store.add_items([flashpoint]) # this is the final flashpoint with all the feed entries
+            #********************
+            if len(feed_entries) > 10:
+                self.flashpoint_store.add_items([flashpoint]) # this is the final flashpoint with all the feed entries
             #********************
             log_workflow_step(
                 self.logger,
@@ -699,12 +767,28 @@ class MASXOrchestrator:
         Fan-in node: aggregate all individual flashpoint results from FlashpointStore
         and store the final flashpoints + feeds to Supabase DB.
         """
+        
+        
+        
+        
+        
 
         store = self.flashpoint_store
         run_id = state.workflow_id[0] if state.workflow_id else "unknown_run"
         all_results = store.get_items()
         state.data["final_data"] = all_results
-
+        
+        count = 1
+        
+        for fp_item in all_results:
+            flashpoint = FlashpointItem.model_validate(fp_item)
+            with open(f"flashpoint-{count}.json", "w") as f:
+              json.dump(flashpoint.model_dump(), f, indent=4) 
+            count +=1
+            
+            
+        
+     
         # Define inner async function
         async def store_flashpoints_and_feeds():
             async with self.flashpoint_db_service as db:
@@ -753,8 +837,13 @@ class MASXOrchestrator:
                         self.logger.error(f"[Store Error] Flashpoint/feeds failed: {e}")
 
         # Execute the async inner function from sync context
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(store_flashpoints_and_feeds())
+        #loop = asyncio.get_event_loop()
+        #loop.run_until_complete(store_flashpoints_and_feeds()) #broken in Python 3.12+
+        try:
+            asyncio.run(store_flashpoints_and_feeds())
+        except RuntimeError as e:
+            self.logger.error(f"Asyncio RuntimeError: {e}")
+            raise
 
         store.clear()
         return state
@@ -953,23 +1042,13 @@ class MASXOrchestrator:
         return state
 
     def _end_workflow(self, state: MASXState) -> MASXState:
-        """Finalize workflow execution."""
-        
-        final_output: FlashpointDataset = state.data.get("final_data", [])
-        
-        # convert final_output to list of dicts
-        final_output_json = [item.model_dump() for item in final_output]
-        
-        
-        self._persist_final_output(final_output_json)
-
-        
+        """Finalize workflow execution."""        
         state.workflow.completed = True
         state.workflow.current_step = "end"
 
         result_json = {
             "workflow_id": state.workflow_id[0],
-            "flashpoints": state.data.get("flashpoint_results", []),
+            "flashpoints": state.data.get("final_data", []),
             "errors": state.errors,
         }
         self.logger.info(f"Workflow completed with results: {result_json}")

@@ -105,7 +105,7 @@ class TestMASXOrchestrator:
         state = MASXState()
         state.metadata = {"title": "Test", "description": "Test description"}
 
-        result_state = self.orchestrator._run_domain_classifier(state)
+        result_state = self.orchestrator._run_domain_classification(state)
 
         assert result_state.workflow.current_step == "domain_classification"
         assert "domain_classifier" in result_state.agents
@@ -116,7 +116,7 @@ class TestMASXOrchestrator:
         state = MASXState()
         state.metadata = {"title": "Test", "description": "Test description"}
 
-        result_state = self.orchestrator._run_domain_classifier(state)
+        result_state = self.orchestrator._run_domain_classification(state)
 
         assert len(result_state.errors) > 0
         assert "DomainClassifier agent not available" in result_state.errors[0]
@@ -132,7 +132,7 @@ class TestMASXOrchestrator:
         state = MASXState()
         state.metadata = {"title": "Test", "description": "Test description"}
 
-        result_state = self.orchestrator._run_domain_classifier(state)
+        result_state = self.orchestrator._run_domain_classification(state)
 
         assert len(result_state.errors) > 0
         assert "Domain classification failed" in result_state.errors[0]
@@ -152,7 +152,7 @@ class TestMASXOrchestrator:
         state = MASXState()
         state.metadata = {"domains": ["Geopolitical"], "context": {}}
 
-        result_state = self.orchestrator._run_query_planner(state)
+        result_state = self.orchestrator._run_query_planning(state)
 
         assert result_state.workflow.current_step == "query_planning"
         assert "query_planner" in result_state.agents
