@@ -28,10 +28,11 @@ from ..core.utils import measure_execution_time
 from ..config.logging_config import get_service_logger
 from ..config.settings import get_settings
 from ..core.exceptions import DatabaseException, ConfigurationException
+from itertools import islice
 
 # Replace with your actual database client imports
 # from your_project.database import supabase_client, pg_pool
-
+BATCH_SIZE = 100
 
 @dataclass
 class FlashpointRecord:
@@ -283,9 +284,9 @@ class FlashpointDatabaseService:
                 record = FlashpointRecord(
                     title=fp.title.strip(),
                     description=fp.description.strip(),
-                    entities=fp.entities,
-                    domains=fp.domains,
-                    run_id=run_id,
+                    entities=fp.entities or [],
+                    domains=fp.domains or [],
+                    run_id=run_id or "unknown_run",
                     created_at=now,
                     updated_at=now,
                 )
@@ -313,6 +314,7 @@ class FlashpointDatabaseService:
             except Exception as e:
                 self.logger.error(f"store_flashpoint() failed: {e}")
                 raise DatabaseException(f"store_flashpoint failed: {str(e)}")
+            
 
     async def store_feed_entries(self, flashpoint_id: str, feeds: List) -> int:
         try:
@@ -322,6 +324,14 @@ class FlashpointDatabaseService:
             feed_table = self.get_daily_table_name("feed_entries")
             flashpoint_table = self.get_daily_table_name("flash_point")
             await self.ensure_feed_table_exists(feed_table, flashpoint_table)
+
+            def batch_iterator(iterable, size):
+                it = iter(iterable)
+                while True:
+                    batch = list(islice(it, size))
+                    if not batch:
+                        break
+                    yield batch
 
             payload = []
             for feed in feeds:
@@ -339,8 +349,14 @@ class FlashpointDatabaseService:
                 data = {k: v for k, v in asdict(record).items() if v is not None}
                 payload.append(data)
 
-            result = self.client.table(feed_table).insert(payload).execute()
-            return len(result.data or [])
+            total_inserted = 0
+            for batch in batch_iterator(payload, BATCH_SIZE):
+                result = self.client.table(feed_table).insert(batch).execute()
+                inserted = len(result.data or [])
+                total_inserted += inserted
+
+            return total_inserted
+
         except Exception as e:
             self.logger.error(f"store_feed_entries() failed: {e}")
             raise DatabaseException(str(e))
