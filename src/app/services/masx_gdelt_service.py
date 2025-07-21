@@ -1,7 +1,7 @@
 # ┌───────────────────────────────────────────────────────────────┐
-# │  Copyright (c) 2025 Ateet Vatan Bahmani                      │
-# │  Project: MASX AI – Strategic Agentic AI System              │
-# │  All rights reserved.                                        │
+# │  Copyright (c) 2025 Ateet Vatan Bahmani                       │
+# │  Project: MASX AI – Strategic Agentic AI System               │
+# │  All rights reserved.                                         │
 # └───────────────────────────────────────────────────────────────┘
 #
 # MASX AI is a proprietary software system developed and owned by Ateet Vatan Bahmani.
@@ -26,12 +26,23 @@ import time
 from ..config.settings import get_settings
 from ..config.logging_config import get_logger
 from ..core.utils import retry_with_backoff, safe_json_loads
-
+from .gdeltdoc import GdeltDoc, Filters, RateLimitError
+from threading import Lock
 
 class MasxGdeltService:
     """
     Service class to interact with the MASX GDELT API.
     """
+    
+    _instance = None
+    _lock: Lock = Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(MasxGdeltService, cls).__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
 
     def __init__(self):
         self.settings = get_settings()
@@ -46,7 +57,9 @@ class MasxGdeltService:
             "x-api-key": self.API_KEY,
             "Content-Type": "application/json"
         }
-        self.max_workers = self._decide_workers()
+        self.max_workers = 1 # due to the api gdelt rate limit
+        #self._decide_workers()
+        self.gdelt_doc = GdeltDoc()
         
     # def _set_base_urls(self):
     #     self.base_urls =[]
@@ -109,7 +122,7 @@ class MasxGdeltService:
         ]
     
     @retry_with_backoff(max_attempts=5, base_delay=5)
-    def fetch_gdelt_articles(
+    def fetch_gdelt_articles_http(
         self,
         keyword: str,
         start_date: str,
@@ -157,6 +170,39 @@ class MasxGdeltService:
             self.logger.error(f"MASX GDELT API error [{keyword} – {country}]: {e}")
             #time.sleep(2)
             raise e
+        
+    @retry_with_backoff(max_attempts=5, base_delay=5, jitter=True)
+    def fetch_gdelt_articles(
+        self,
+        keyword: str,
+        start_date: str,
+        end_date: str,
+        country: str,
+        maxrecords: int = 250
+    ) -> List[Dict]:
+        """
+        Sends a request to fetch articles from GDELT API.
+        """      
+        try:
+            f = Filters(
+                keyword=keyword,
+                start_date=start_date,
+                end_date=end_date,
+                country=country,
+                max_records=maxrecords
+            )
+            articles = self.gdelt_doc.article_search(f)
+            time.sleep(random.uniform(0, 5))
+            return articles
+       
+        except RateLimitError as e:
+            self.logger.warning(f"[GDELT Rate Limit] keyword={keyword}, country={country}: {e}", exc_info=True)
+            time.sleep(60)
+            raise
+       
+        except Exception as e:
+            self.logger.error(f"[GDELT Fetch Failed] keyword={keyword}, country={country}: {e}", exc_info=True)
+            raise
 
     def _fetch_one_combo(self, combo: Dict) -> Tuple[Dict, Optional[List[Dict]]]:
         """
@@ -174,13 +220,14 @@ class MasxGdeltService:
                 return combo, []
 
             articles = self.fetch_gdelt_articles(keyword, start_date, end_date, country, maxrecords)
-            return combo, articles
-        except (requests.Timeout, requests.ConnectionError) as e:
-            self.logger.error(f"[Connection/Timeout] Failed to fetch combo {combo}: {e}")
-            return combo, []
+            return combo, articles      
         except Exception as e:
-            self.logger.error(f"[Exception] Failed to fetch combo {combo}: {e}", exc_info=True)
+            self.logger.error(
+                f"[Combo Failed] keyword={keyword}, country={country}, date={start_date}–{end_date} | Error: {e}",
+                exc_info=True
+            )
             return combo, []
+        
 
     def fetch_articles_batch_threaded(
         self, combos: List[Dict]
@@ -191,29 +238,28 @@ class MasxGdeltService:
         """
         results = {}
 
-        # Test connectivity before starting batch requests
-        # if not self.test_connectivity():
-        #     self.logger.error("GDELT API connectivity test failed. Skipping batch requests.")
-        #     return results
-
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_combo = {
                 executor.submit(self._fetch_one_combo, combo): combo for combo in combos
             }
 
-            for future in as_completed(future_to_combo):                
+            for future in as_completed(future_to_combo):
+                combo = future_to_combo[future]  # Ensure combo is always available
+                keyword = combo.get("keyword", "")
+                country = combo.get("country", "")
+                key = f"{keyword}_{country}"
+
                 try:
-                    combo, articles = future.result()
-                    key = f"{combo.get('keyword', '')}_{combo.get('country', '')}"
+                    _, articles = future.result()
                     if articles:
                         simplified = self.extract_gdelt_article_data(articles)
                         results[key] = simplified
-                        self.logger.info(f"[{key}] {len(simplified)} articles fetched.")
+                        self.logger.info(f"[{key}] - {len(simplified)} articles fetched.")
                     else:
                         results[key] = []
-                        self.logger.warning(f"[{key}] No articles fetched.")
+                        self.logger.warning(f"[{key}] - No articles fetched.")
                 except Exception as e:
-                    self.logger.error(f"[{key}] Exception during fetch: {e}")
+                    self.logger.error(f"[{key}] - Exception during fetch: {e}", exc_info=True)
                     results[key] = []
 
         return results
