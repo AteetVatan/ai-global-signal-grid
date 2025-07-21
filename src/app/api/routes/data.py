@@ -37,8 +37,8 @@ router = APIRouter()
 logger = get_api_logger("DataRoutes")
 
 
-class HotspotResponse(BaseModel):
-    """Hotspot response model."""
+class FlashpointResponse(BaseModel):
+    """Flashpoint response model."""
 
     id: str
     title: str
@@ -51,8 +51,8 @@ class HotspotResponse(BaseModel):
     updated_at: str
 
 
-class ArticleResponse(BaseModel):
-    """Article response model."""
+class FeedResponse(BaseModel):
+    """Feed response model."""
 
     id: str
     url: str
@@ -76,8 +76,8 @@ class AnalyticsResponse(BaseModel):
     time_series: List[Dict[str, Any]]
 
 
-@router.get("/hotspots", response_model=List[HotspotResponse])
-async def get_hotspots(
+@router.get("/flashpoints", response_model=List[FlashpointResponse])
+async def get_flashpoints(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     domains: Optional[str] = Query(None, description="Comma-separated list of domains"),
@@ -86,7 +86,7 @@ async def get_hotspots(
     sort_order: str = Query("desc", description="Sort order (asc/desc)"),
 ):
     """
-    Get hotspots with optional filtering.
+    Get flashpoints with optional filtering.
 
     Args:
         limit: Maximum number of hotspots to return
@@ -99,7 +99,7 @@ async def get_hotspots(
     Returns:
         List of hotspot records
     """
-    logger.info("Hotspots retrieval requested")
+    logger.info("Flashpoints retrieval requested")
 
     try:
         async with DatabaseService() as db:
@@ -116,7 +116,7 @@ async def get_hotspots(
             response_data = []
             for hotspot in hotspots:
                 response_data.append(
-                    HotspotResponse(
+                    FlashpointResponse(
                         id=hotspot.id or "",
                         title=hotspot.title,
                         summary=hotspot.summary,
@@ -133,51 +133,51 @@ async def get_hotspots(
                     )
                 )
 
-            logger.info(f"Hotspots retrieved: {len(response_data)} records")
+            logger.info(f"Flashpoints retrieved: {len(response_data)} records")
             return response_data
 
     except Exception as e:
-        logger.error(f"Hotspots retrieval failed: {e}")
+        logger.error(f"Flashpoints retrieval failed: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Hotspots retrieval failed: {str(e)}"
+            status_code=500, detail=f"Flashpoints retrieval failed: {str(e)}"
         )
 
 
-@router.get("/hotspots/{hotspot_id}", response_model=HotspotResponse)
-async def get_hotspot(hotspot_id: str):
+@router.get("/flashpoints/{flashpoint_id}", response_model=FlashpointResponse)
+async def get_flashpoint(flashpoint_id: str):
     """
-    Get a specific hotspot by ID.
+    Get a specific flashpoint by ID.
 
     Args:
-        hotspot_id: Hotspot ID
+        flashpoint_id: Flashpoint ID
 
     Returns:
-        Hotspot record
+        Flashpoint record
     """
-    logger.info(f"Hotspot retrieval requested: {hotspot_id}")
+    logger.info(f"Flashpoint retrieval requested: {flashpoint_id}")       
 
     try:
         async with DatabaseService() as db:
-            hotspot = await db.get_hotspot(hotspot_id)
+            flashpoint = await db.get_flashpoint(flashpoint_id)
 
-            if not hotspot:
+            if not flashpoint:
                 raise HTTPException(
-                    status_code=404, detail=f"Hotspot {hotspot_id} not found"
+                    status_code=404, detail=f"Flashpoint {flashpoint_id} not found"
                 )
 
-            response = HotspotResponse(
-                id=hotspot.id or "",
-                title=hotspot.title,
-                summary=hotspot.summary,
-                domains=hotspot.domains,
-                entities=hotspot.entities,
-                articles=hotspot.articles,
-                confidence_score=hotspot.confidence_score,
-                created_at=hotspot.created_at.isoformat() if hotspot.created_at else "",
-                updated_at=hotspot.updated_at.isoformat() if hotspot.updated_at else "",
+            response = FlashpointResponse(
+                id=flashpoint.id or "",
+                title=flashpoint.title,
+                summary=flashpoint.summary,
+                domains=flashpoint.domains,
+                entities=flashpoint.entities,
+                articles=flashpoint.articles,
+                confidence_score=flashpoint.confidence_score,
+                created_at=flashpoint.created_at.isoformat() if flashpoint.created_at else "",
+                updated_at=flashpoint.updated_at.isoformat() if flashpoint.updated_at else "",
             )
 
-            logger.info(f"Hotspot retrieved: {hotspot_id}")
+            logger.info(f"Flashpoint retrieved: {flashpoint_id}")
             return response
 
     except HTTPException:
@@ -189,8 +189,8 @@ async def get_hotspot(hotspot_id: str):
         )
 
 
-@router.get("/articles", response_model=List[ArticleResponse])
-async def get_articles(
+@router.get("/feeds", response_model=List[FeedResponse])
+async def get_feeds(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     language: Optional[str] = Query(None, description="Filter by language"),
@@ -199,247 +199,247 @@ async def get_articles(
     sort_order: str = Query("desc", description="Sort order (asc/desc)"),
 ):
     """
-    Get articles with optional filtering.
+    Get feeds with optional filtering.
 
     Args:
-        limit: Maximum number of articles to return
-        offset: Number of articles to skip
+        limit: Maximum number of feeds to return
+        offset: Number of feeds to skip
         language: Filter by language
         source: Filter by source
         sort_by: Field to sort by
         sort_order: Sort order
 
     Returns:
-        List of article records
+        List of feed records
     """
-    logger.info("Articles retrieval requested")
+    logger.info("Feeds retrieval requested")
 
     try:
         async with DatabaseService() as db:
-            articles = await db.get_articles(
+            feeds = await db.get_feeds(
                 limit=limit, offset=offset, language=language, source=source
             )
 
             # Convert to response format
             response_data = []
-            for article in articles:
+            for feed in feeds:
                 response_data.append(
-                    ArticleResponse(
-                        id=article.id or "",
-                        url=article.url,
-                        title=article.title,
-                        content=article.content,
-                        source=article.source,
-                        language=article.language,
+                    FeedResponse(
+                        id=feed.id or "",
+                        url=feed.url,
+                        title=feed.title,
+                        content=feed.content,
+                        source=feed.source,
+                        language=feed.language,
                         published_at=(
-                            article.published_at.isoformat()
-                            if article.published_at
+                            feed.published_at.isoformat()
+                            if feed.published_at
                             else None
                         ),
-                        entities=article.entities,
+                        entities=feed.entities,
                         created_at=(
-                            article.created_at.isoformat() if article.created_at else ""
+                            feed.created_at.isoformat() if feed.created_at else ""
                         ),
                     )
                 )
 
-            logger.info(f"Articles retrieved: {len(response_data)} records")
+            logger.info(f"Feeds retrieved: {len(response_data)} records")
             return response_data
 
     except Exception as e:
-        logger.error(f"Articles retrieval failed: {e}")
+        logger.error(f"Feeds retrieval failed: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Articles retrieval failed: {str(e)}"
+            status_code=500, detail=f"Feeds retrieval failed: {str(e)}"
         )
 
 
-@router.get("/search")
-async def search_data(
-    query: str = Query(..., description="Search query"),
-    search_type: str = Query("hotspots", description="Search type (hotspots/articles)"),
-    limit: int = Query(10, ge=1, le=100),
-    similarity_threshold: float = Query(0.7, ge=0.0, le=1.0),
-):
-    """
-    Search data using vector similarity.
+# @router.get("/search")
+# async def search_data(
+#     query: str = Query(..., description="Search query"),
+#     search_type: str = Query("hotspots", description="Search type (hotspots/articles)"),
+#     limit: int = Query(10, ge=1, le=100),
+#     similarity_threshold: float = Query(0.7, ge=0.0, le=1.0),
+# ):
+#     """
+#     Search data using vector similarity.
 
-    Args:
-        query: Search query text
-        search_type: Type of data to search
-        limit: Maximum number of results
-        similarity_threshold: Minimum similarity score
+#     Args:
+#         query: Search query text
+#         search_type: Type of data to search
+#         limit: Maximum number of results
+#         similarity_threshold: Minimum similarity score
 
-    Returns:
-        Search results
-    """
-    logger.info(f"Data search requested: {query}")
+#     Returns:
+#         Search results
+#     """
+#     logger.info(f"Data search requested: {query}")
 
-    try:
-        from ...services import EmbeddingService
+#     try:
+#         from ...services import EmbeddingService
 
-        async with EmbeddingService() as embedder:
-            # Generate embedding for query
-            embedding_result = await embedder.embed_text(query)
+#         async with EmbeddingService() as embedder:
+#             # Generate embedding for query
+#             embedding_result = await embedder.embed_text(query)
 
-            if search_type == "hotspots":
-                async with DatabaseService() as db:
-                    similar_hotspots = await db.search_hotspots_by_similarity(
-                        embedding=embedding_result.embedding,
-                        limit=limit,
-                        similarity_threshold=similarity_threshold,
-                    )
+#             if search_type == "hotspots":
+#                 async with DatabaseService() as db:
+#                     similar_hotspots = await db.search_hotspots_by_similarity(
+#                         embedding=embedding_result.embedding,
+#                         limit=limit,
+#                         similarity_threshold=similarity_threshold,
+#                     )
 
-                    results = []
-                    for hotspot in similar_hotspots:
-                        results.append(
-                            {
-                                "id": hotspot.id,
-                                "title": hotspot.title,
-                                "summary": hotspot.summary,
-                                "similarity_score": hotspot.confidence_score,
-                                "domains": hotspot.domains,
-                                "created_at": (
-                                    hotspot.created_at.isoformat()
-                                    if hotspot.created_at
-                                    else None
-                                ),
-                            }
-                        )
+#                     results = []
+#                     for hotspot in similar_hotspots:
+#                         results.append(
+#                             {
+#                                 "id": hotspot.id,
+#                                 "title": hotspot.title,
+#                                 "summary": hotspot.summary,
+#                                 "similarity_score": hotspot.confidence_score,
+#                                 "domains": hotspot.domains,
+#                                 "created_at": (
+#                                     hotspot.created_at.isoformat()
+#                                     if hotspot.created_at
+#                                     else None
+#                                 ),
+#                             }
+#                         )
 
-                    logger.info(f"Search completed: {len(results)} results")
-                    return {
-                        "query": query,
-                        "search_type": search_type,
-                        "results": results,
-                        "total": len(results),
-                    }
-            else:
-                raise HTTPException(
-                    status_code=400, detail=f"Unsupported search type: {search_type}"
-                )
+#                     logger.info(f"Search completed: {len(results)} results")
+#                     return {
+#                         "query": query,
+#                         "search_type": search_type,
+#                         "results": results,
+#                         "total": len(results),
+#                     }
+#             else:
+#                 raise HTTPException(
+#                     status_code=400, detail=f"Unsupported search type: {search_type}"
+#                 )
 
-    except Exception as e:
-        logger.error(f"Data search failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Data search failed: {str(e)}")
-
-
-@router.get("/analytics", response_model=AnalyticsResponse)
-async def get_analytics(
-    days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
-):
-    """
-    Get analytics and statistics.
-
-    Args:
-        days: Number of days to analyze
-
-    Returns:
-        Analytics data
-    """
-    logger.info("Analytics requested")
-
-    try:
-        async with DatabaseService() as db:
-            # Get database statistics
-            stats = await db.get_database_stats()
-
-            # Get recent hotspots and articles
-            from datetime import datetime, timedelta
-
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-            recent_hotspots = await db.get_hotspots(limit=1000)
-            recent_articles = await db.get_articles(limit=1000)
-
-            # Calculate distributions
-            domains_distribution = {}
-            sources_distribution = {}
-            languages_distribution = {}
-
-            for hotspot in recent_hotspots:
-                for domain in hotspot.domains:
-                    domains_distribution[domain] = (
-                        domains_distribution.get(domain, 0) + 1
-                    )
-
-            for article in recent_articles:
-                sources_distribution[article.source] = (
-                    sources_distribution.get(article.source, 0) + 1
-                )
-                languages_distribution[article.language] = (
-                    languages_distribution.get(article.language, 0) + 1
-                )
-
-            # Generate time series data (mock for now)
-            time_series = []
-            for i in range(days):
-                date = datetime.utcnow() - timedelta(days=i)
-                time_series.append(
-                    {
-                        "date": date.date().isoformat(),
-                        "hotspots_count": len(
-                            [
-                                h
-                                for h in recent_hotspots
-                                if h.created_at and h.created_at.date() == date.date()
-                            ]
-                        ),
-                        "articles_count": len(
-                            [
-                                a
-                                for a in recent_articles
-                                if a.created_at and a.created_at.date() == date.date()
-                            ]
-                        ),
-                    }
-                )
-
-            analytics = AnalyticsResponse(
-                total_hotspots=stats.get("hotspots_count", 0),
-                total_articles=stats.get("articles_count", 0),
-                domains_distribution=domains_distribution,
-                sources_distribution=sources_distribution,
-                languages_distribution=languages_distribution,
-                time_series=time_series,
-            )
-
-            logger.info("Analytics generated successfully")
-            return analytics
-
-    except Exception as e:
-        logger.error(f"Analytics generation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Analytics generation failed: {str(e)}"
-        )
+#     except Exception as e:
+#         logger.error(f"Data search failed: {e}")
+#         raise HTTPException(status_code=500, detail=f"Data search failed: {str(e)}")
 
 
-@router.get("/stats")
-async def get_data_stats():
-    """
-    Get data statistics.
+# @router.get("/analytics", response_model=AnalyticsResponse)
+# async def get_analytics(
+#     days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
+# ):
+#     """
+#     Get analytics and statistics.
 
-    Returns:
-        Data statistics
-    """
-    logger.info("Data statistics requested")
+#     Args:
+#         days: Number of days to analyze
 
-    try:
-        async with DatabaseService() as db:
-            stats = await db.get_database_stats()
+#     Returns:
+#         Analytics data
+#     """
+#     logger.info("Analytics requested")
 
-            logger.info("Data statistics retrieved")
-            return stats
+#     try:
+#         async with DatabaseService() as db:
+#             # Get database statistics
+#             stats = await db.get_database_stats()
 
-    except Exception as e:
-        logger.error(f"Data statistics retrieval failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Data statistics retrieval failed: {str(e)}"
-        )
+#             # Get recent hotspots and articles
+#             from datetime import datetime, timedelta
+
+#             cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+#             recent_hotspots = await db.get_hotspots(limit=1000)
+#             recent_articles = await db.get_articles(limit=1000)
+
+#             # Calculate distributions
+#             domains_distribution = {}
+#             sources_distribution = {}
+#             languages_distribution = {}
+
+#             for hotspot in recent_hotspots:
+#                 for domain in hotspot.domains:
+#                     domains_distribution[domain] = (
+#                         domains_distribution.get(domain, 0) + 1
+#                     )
+
+#             for article in recent_articles:
+#                 sources_distribution[article.source] = (
+#                     sources_distribution.get(article.source, 0) + 1
+#                 )
+#                 languages_distribution[article.language] = (
+#                     languages_distribution.get(article.language, 0) + 1
+#                 )
+
+#             # Generate time series data (mock for now)
+#             time_series = []
+#             for i in range(days):
+#                 date = datetime.utcnow() - timedelta(days=i)
+#                 time_series.append(
+#                     {
+#                         "date": date.date().isoformat(),
+#                         "hotspots_count": len(
+#                             [
+#                                 h
+#                                 for h in recent_hotspots
+#                                 if h.created_at and h.created_at.date() == date.date()
+#                             ]
+#                         ),
+#                         "articles_count": len(
+#                             [
+#                                 a
+#                                 for a in recent_articles
+#                                 if a.created_at and a.created_at.date() == date.date()
+#                             ]
+#                         ),
+#                     }
+#                 )
+
+#             analytics = AnalyticsResponse(
+#                 total_hotspots=stats.get("hotspots_count", 0),
+#                 total_articles=stats.get("articles_count", 0),
+#                 domains_distribution=domains_distribution,
+#                 sources_distribution=sources_distribution,
+#                 languages_distribution=languages_distribution,
+#                 time_series=time_series,
+#             )
+
+#             logger.info("Analytics generated successfully")
+#             return analytics
+
+#     except Exception as e:
+#         logger.error(f"Analytics generation failed: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Analytics generation failed: {str(e)}"
+#         )
+
+
+# @router.get("/stats")
+# async def get_data_stats():
+#     """
+#     Get data statistics.
+
+#     Returns:
+#         Data statistics
+#     """
+#     logger.info("Data statistics requested")
+
+#     try:
+#         async with DatabaseService() as db:
+#             stats = await db.get_database_stats()
+
+#             logger.info("Data statistics retrieved")
+#             return stats
+
+#     except Exception as e:
+#         logger.error(f"Data statistics retrieval failed: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Data statistics retrieval failed: {str(e)}"
+#         )
 
 
 @router.get("/export")
 async def export_data(
-    data_type: str = Query(..., description="Data type to export (hotspots/articles)"),
+    data_type: str = Query(..., description="Data type to export (flashpoints/feeds)"),
     format: str = Query("json", description="Export format (json/csv)"),
     limit: int = Query(1000, ge=1, le=10000),
 ):
@@ -457,29 +457,29 @@ async def export_data(
     logger.info(f"Data export requested: {data_type} in {format} format")
 
     try:
-        if data_type == "hotspots":
+        if data_type == "flashpoints":
             async with DatabaseService() as db:
-                hotspots = await db.get_hotspots(limit=limit)
+                flashpoints = await db.get_flashpoints(limit=limit)
 
                 if format == "json":
                     return {
-                        "type": "hotspots",
+                        "type": "flashpoints",
                         "format": "json",
-                        "count": len(hotspots),
+                        "count": len(flashpoints),
                         "data": [
                             {
-                                "id": h.id,
-                                "title": h.title,
-                                "summary": h.summary,
-                                "domains": h.domains,
-                                "entities": h.entities,
-                                "articles": h.articles,
-                                "confidence_score": h.confidence_score,
+                                "id": f.id,
+                                "title": f.title,
+                                "summary": f.summary,
+                                "domains": f.domains,
+                                "entities": f.entities,
+                                "articles": f.articles,
+                                "confidence_score": f.confidence_score,
                                 "created_at": (
-                                    h.created_at.isoformat() if h.created_at else None
+                                    f.created_at.isoformat() if f.created_at else None
                                 ),
                             }
-                            for h in hotspots
+                            for f in flashpoints
                         ],
                     }
                 else:
@@ -487,34 +487,34 @@ async def export_data(
                         status_code=400, detail=f"Unsupported format: {format}"
                     )
 
-        elif data_type == "articles":
+        elif data_type == "feeds":
             async with DatabaseService() as db:
-                articles = await db.get_articles(limit=limit)
+                feeds = await db.get_feeds(limit=limit)
 
                 if format == "json":
                     return {
-                        "type": "articles",
+                        "type": "feeds",
                         "format": "json",
-                        "count": len(articles),
+                        "count": len(feeds),
                         "data": [
                             {
-                                "id": a.id,
-                                "url": a.url,
-                                "title": a.title,
-                                "content": a.content,
-                                "source": a.source,
-                                "language": a.language,
+                                "id": f.id,
+                                "url": f.url,
+                                "title": f.title,
+                                "content": f.content,
+                                "source": f.source,
+                                "language": f.language,
                                 "published_at": (
-                                    a.published_at.isoformat()
-                                    if a.published_at
+                                    f.published_at.isoformat()
+                                    if f.published_at
                                     else None
                                 ),
-                                "entities": a.entities,
+                                "entities": f.entities,
                                 "created_at": (
-                                    a.created_at.isoformat() if a.created_at else None
+                                    f.created_at.isoformat() if f.created_at else None
                                 ),
                             }
-                            for a in articles
+                            for f in feeds
                         ],
                     }
                 else:
