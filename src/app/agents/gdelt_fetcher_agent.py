@@ -113,6 +113,7 @@ class GdeltFetcherAgent(BaseAgent):
             combo_set = set()  # for deduplication (keyword, country)
             start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
             end_date = datetime.now().strftime("%Y-%m-%d")
+            all_combo_list = []
             for query in queries:
                 
                 maxrecords = 250
@@ -148,15 +149,25 @@ class GdeltFetcherAgent(BaseAgent):
                                 continue
                             combo_set.add(combo_key)
 
+                            #make the keyword length more then 5 characters
+                            if len(keyword_str) <= 5:
+                                key_len = len(keyword_str)
+                                n = 5 - key_len
+                                keyword_str = keyword_str + " " * n
+                                
+                            
                             combo = {
                                 "start_date": start_date,
                                 "end_date": end_date,
                                 "maxrecords": maxrecords,
                                 "keyword": keyword_str,
                                 "country": country
-                            }
+                            }                            
+                           
                             combo_list.append(combo)
-                            
+                
+                #remove all combos that are already in all_combo_list
+                combo_list = [combo for combo in combo_list if combo not in all_combo_list]
 
                 if not combo_list:
                     query.gdelt_feed_entries = []
@@ -165,9 +176,12 @@ class GdeltFetcherAgent(BaseAgent):
                 # Fetch in batch (threaded)
                 #if self.settings.debug:
                     #combo_list = combo_list[:3]
+                
+                
                 results = self.masx_gdelt_service.fetch_articles_batch_threaded(combo_list)             
                 # Convert articles to FeedEntry
                 query.gdelt_feed_entries = self.feed_parser_service.process_gdelt_feed_entries(results)
+                all_combo_list.extend(combo_list)
 
             return AgentResult(
                 success=True,
