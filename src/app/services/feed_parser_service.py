@@ -35,7 +35,7 @@ logger = get_logger("FeedParserService")
 class FeedParserService:
     def __init__(self, min_results: int = 2):
         self.min_results = min_results
-        self.recent_days = 1
+        self.recent_days = 2
         self.settings = get_settings()
         # if self.settings.debug:
         #     self.recent_days = 10
