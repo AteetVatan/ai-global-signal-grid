@@ -34,6 +34,7 @@ from typing import Any, Dict, List
 from .base import BaseAgent, AgentResult
 from ..services.llm_service import LLMService
 from ..core.exceptions import AgentException
+from ..constants import DOMAIN_CATEGORIES
 
 class DomainClassifier(BaseAgent):
     """
@@ -43,23 +44,7 @@ class DomainClassifier(BaseAgent):
     - Geopolitical, Military/Conflict, Economic/Trade, Cultural/Identity
     - Religious/Ideological, Technological, Cybersecurity, Environmental
     - Civilizational/Ethnonationalist, AI Governance, Migration, Sovereignty
-    """
-
-    # Geopolitical / Geostrategic Domain categories
-    DOMAIN_CATEGORIES = [
-        "Geopolitical",
-        "Military / Conflict / Strategic Alliances",
-        "Economic / Trade / Sanctions",
-        "Cultural / Identity Clashes",
-        "Religious Tensions / Ideological Movements",
-        "Technological Competition",
-        "Cybersecurity Threats / Disinformation Ops",
-        "Environmental Flashpoints / Resource Crises",
-        "Civilizational / Ethnonationalist Narratives",
-        "AI Governance / Tech Ethics Conflicts",
-        "Migration / Demographic Pressures",
-        "Sovereignty / Border / Legal Disputes",
-    ]
+    """   
 
     def __init__(self):
         """Initialize the Domain Classifier agent."""
