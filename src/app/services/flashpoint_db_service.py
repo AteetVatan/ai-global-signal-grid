@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import List, Optional
 from dataclasses import dataclass, asdict
 import re
-
+import json
 import asyncpg
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
@@ -291,14 +291,23 @@ class FlashpointDatabaseService:
                 )
                 data = {k: v for k, v in asdict(record).items() if v is not None}
 
-                # Step 4: Insert using Supabase client
+
+                 # Fix types: Supabase often needs JSON-safe formats
+                if isinstance(data["entities"], list):
+                    data["entities"] = json.dumps(data["entities"])
+                if isinstance(data["domains"], list):
+                    data["domains"] = json.dumps(data["domains"])
+                    
+                self.logger.debug(f"[store_flashpoint] Payload for {table_name}: {json.dumps(data, indent=2)}")
+      # Step 4: Insert using Supabase client
                 result = self.client.table(table_name).insert(data).execute()
 
                 if result.data:
-                    flashpoint_id = result.data[0]["id"]
-                    self.logger.info(f"Flashpoint stored in {table_name}: {flashpoint_id}")
-                    return flashpoint_id
+                    flashpoint_id = result.data[0].get("id")
+                    self.logger.info(f"[store_flashpoint] Stored in {table_name} → ID: {flashpoint_id}")
+                    return flashpoint_id or "unknown_id"
                 else:
+                    self.logger.error(f"[store_flashpoint] No data returned: {result}")
                     raise DatabaseException("No data returned from flashpoint insert")
 
             except Exception as e:
