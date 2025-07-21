@@ -35,7 +35,6 @@ class PingApisService:
     ):
         self.settings = get_settings()
         self.ping_url = self.settings.GDELT_API_URL
-        self.ping_url_1 = self.settings.GDELT_API_URL_1
         self.timeout = timeout
         self.logger = get_logger("PingApisService")
 
@@ -48,9 +47,7 @@ class PingApisService:
         try:
             self.logger.info(f"Pinging MASX server at {self.ping_url}")
             response = requests.get(self.ping_url, timeout=self.timeout)
-            response_1 = requests.get(self.ping_url_1, timeout=self.timeout)
             self.logger.info(f"Ping response: {response.status_code}")
-            self.logger.info(f"Ping response: {response_1.status_code}")
         except Exception as e:
             self.logger.warning(f"MASX server ping failed: {e}")
 
@@ -60,7 +57,6 @@ class PingApisService:
         """
         try:
             response = requests.get(self.ping_url, timeout=self.timeout)
-            response_1 = requests.get(self.ping_url_1, timeout=self.timeout)
-            return response.status_code == 200 and response_1.status_code == 200
+            return response.status_code == 200
         except:
             return False
