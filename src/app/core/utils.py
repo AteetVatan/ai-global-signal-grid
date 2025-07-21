@@ -35,6 +35,7 @@ from functools import wraps
 from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 import json
+import random
 
 from .exceptions import ExternalServiceException
 
@@ -103,6 +104,7 @@ def retry_with_backoff(
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
+    jitter: bool = False,
     exponential_base: float = 2.0,
     exceptions: tuple = (Exception,),
 ):
@@ -141,6 +143,8 @@ def retry_with_backoff(
 
                     # Calculate delay with exponential backoff
                     delay = min(base_delay * (exponential_base**attempt), max_delay)
+                    if jitter:
+                        delay += random.uniform(0, 5)
                     time.sleep(delay)
 
             # This should never be reached, but just in case
