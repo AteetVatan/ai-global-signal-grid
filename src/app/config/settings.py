@@ -121,9 +121,6 @@ class Settings(BaseSettings):
     GDELT_API_URL: Optional[str] = Field(
         default=None, description="MASX AI GDELT API URL"
     )
-    GDELT_API_URL_1: Optional[str] = Field(
-        default=None, description="MASX AI GDELT API URL - 1"
-    )
     
     google_translate_api_key: Optional[str] = Field(
         default=None, description="Google Translate API key"
