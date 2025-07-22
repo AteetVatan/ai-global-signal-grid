@@ -53,6 +53,7 @@ class DomainClassifier(BaseAgent):
             description="Classifies content into geopolitical domains using LLM analysis",
         )
         self.llm_service = LLMService.get_instance()  # singleton
+        self.domain_categories = DOMAIN_CATEGORIES
 
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
@@ -128,7 +129,7 @@ class DomainClassifier(BaseAgent):
         Returns:str: Formatted prompt for domain classification
         """
         categories_text = "\n".join(
-            f"- {category}" for category in self.DOMAIN_CATEGORIES
+            f"- {category}" for category in self.domain_categories
         )
 
         return f"""
@@ -161,7 +162,7 @@ class DomainClassifier(BaseAgent):
             domain = domain.strip()
             if domain:
                 # Map back to original case
-                for original in self.DOMAIN_CATEGORIES:
+                for original in self.domain_categories:
                     if domain in original.lower():
                         domains.append(original)
                         break
@@ -180,7 +181,7 @@ class DomainClassifier(BaseAgent):
         """
         valid_domains = []
         for domain in domains:
-            if domain in self.DOMAIN_CATEGORIES or domain == "Uncategorized":
+            if domain in self.domain_categories or domain == "Uncategorized":
                 valid_domains.append(domain)
             else:
                 self.logger.warning(f"Unknown domain category: {domain}")
@@ -212,8 +213,8 @@ class DomainClassifier(BaseAgent):
         capabilities = super().get_capabilities()
         capabilities.update(
             {
-                "domains": self.DOMAIN_CATEGORIES,
-                "max_domains": len(self.DOMAIN_CATEGORIES),
+                "domains": self.domain_categories,
+                "max_domains": len(self.domain_categories),
                 "supports_uncategorized": True,
             }
         )
