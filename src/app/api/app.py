@@ -307,16 +307,16 @@ def _add_logging_middleware(app: FastAPI):
 def _register_routes(app: FastAPI):
     """Register API routes."""
     # Health check routes
-    app.include_router(health.router, prefix="/health", tags=["Health"])
+    #app.include_router(health.router, prefix="/health", tags=["Health"])
 
     # Workflow routes
     app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
 
     # Data routes
-    app.include_router(data.router, prefix="/data", tags=["Data"])
+    #app.include_router(data.router, prefix="/data", tags=["Data"])
 
     # Service routes
-    app.include_router(services.router, prefix="/services", tags=["Services"])
+    #app.include_router(services.router, prefix="/services", tags=["Services"])
 
     # Root endpoint
     @app.get("/", tags=["Root"])
