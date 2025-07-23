@@ -95,7 +95,8 @@ class LLMService:
         self.total_cost = 0.0
 
         # Throttling for mistral
-        self._throttler = Throttler(rate_limit=4, period=60) if self.provider == "mistral" else None
+        self._throttler = None
+        #self._throttler = Throttler(rate_limit=4, period=60) if self.provider == "mistral" else None
 
     def _init_provider(self):
         """Initialize the selected LLM provider."""
@@ -209,6 +210,9 @@ class LLMService:
         """
         Async Mistral call using direct HTTP with throttle and retry.
         """
+        if self._throttler is None:
+            self._throttler = Throttler(rate_limit=4, period=60)
+
         async with self._throttler:
             messages = []
             if system_prompt:
