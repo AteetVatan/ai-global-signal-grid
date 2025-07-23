@@ -31,7 +31,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -49,6 +49,48 @@ from ..core.exceptions import (
     AgentException,
 )
 from .routes import health, workflows, data, services
+
+
+async def verify_api_key(request: Request):
+    """
+    Verify API key from request headers.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        bool: True if API key is valid
+        
+    Raises:
+        HTTPException: If API key is missing or invalid
+    """
+    settings = get_settings()
+    
+    # Skip verification if not required
+    if not settings.require_api_key:
+        return True
+    
+    # Get API key from headers
+    api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
+    
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required. Please provide X-API-Key or Authorization header"
+        )
+    
+    # Remove 'Bearer ' prefix if present
+    if api_key.startswith("Bearer "):
+        api_key = api_key[7:]
+    
+    # Verify against configured API key
+    if api_key != settings.gsg_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
+    
+    return True
 
 
 @asynccontextmanager
@@ -86,7 +128,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     logger = get_api_logger("AppFactory")
 
-    # Create FastAPI app
+    # Create FastAPI app with global dependencies
     app = FastAPI(
         title="MASX AI-GlobalSignalGrid API",
         description="Global Signal Grid (GSG) Agentic AI System API",
@@ -95,6 +137,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.enable_api_docs else None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
         lifespan=lifespan,
+        dependencies=[Depends(verify_api_key)] if settings.require_api_key else None,
     )
 
     # Add middleware
