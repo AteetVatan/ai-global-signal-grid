@@ -46,7 +46,7 @@ import uuid
 import hashlib
 
 import structlog
-from fastapi import WebSocket, WebSocketDisconnect, HTTPException
+# from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel, validator
 import aiohttp
 
@@ -132,21 +132,21 @@ class StreamEvent:
             self.event_id = str(uuid.uuid4())
 
 
-@dataclass
-class ClientConnection:
-    """Client WebSocket connection."""
+# @dataclass
+# class ClientConnection:
+#     """Client WebSocket connection."""
 
-    websocket: WebSocket
-    client_id: str
-    filters: StreamFilter
-    connected_at: datetime
-    last_activity: datetime
-    subscription_topics: Set[str] = field(default_factory=set)
-    is_authenticated: bool = False
+#     websocket: WebSocket
+#     client_id: str
+#     filters: StreamFilter
+#     connected_at: datetime
+#     last_activity: datetime
+#     subscription_topics: Set[str] = field(default_factory=set)
+#     is_authenticated: bool = False
 
-    def update_activity(self):
-        """Update last activity timestamp."""
-        self.last_activity = datetime.now()
+#     def update_activity(self):
+#         """Update last activity timestamp."""
+#         self.last_activity = datetime.now()
 
 
 class StreamingService:
@@ -198,99 +198,99 @@ class StreamingService:
 
         logger.info("Streaming service stopped")
 
-    async def connect_client(
-        self,
-        websocket: WebSocket,
-        client_id: str,
-        filters: Optional[StreamFilter] = None,
-    ) -> str:
-        """Connect a new client."""
-        await websocket.accept()
+    # async def connect_client(
+    #     self,
+    #     websocket: WebSocket,
+    #     client_id: str,
+    #     filters: Optional[StreamFilter] = None,
+    # ) -> str:
+    #     """Connect a new client."""
+    #     await websocket.accept()
 
-        if not filters:
-            filters = StreamFilter()
+    #     if not filters:
+    #         filters = StreamFilter()
 
-        connection = ClientConnection(
-            websocket=websocket,
-            client_id=client_id,
-            filters=filters,
-            connected_at=datetime.now(),
-            last_activity=datetime.now(),
-        )
+    #     connection = ClientConnection(
+    #         websocket=websocket,
+    #         client_id=client_id,
+    #         filters=filters,
+    #         connected_at=datetime.now(),
+    #         last_activity=datetime.now(),
+    #     )
 
-        self.clients[client_id] = connection
-        self.metrics["active_connections"] = len(self.clients)
+    #     self.clients[client_id] = connection
+    #     self.metrics["active_connections"] = len(self.clients)
 
-        # Send welcome message
-        welcome_event = StreamEvent(
-            event_type=StreamEventType.SYSTEM_STATUS,
-            timestamp=datetime.now(),
-            data={
-                "message": "Connected to MASX streaming service",
-                "client_id": client_id,
-                "filters": filters.dict(),
-            },
-        )
+    #     # Send welcome message
+    #     welcome_event = StreamEvent(
+    #         event_type=StreamEventType.SYSTEM_STATUS,
+    #         timestamp=datetime.now(),
+    #         data={
+    #         "message": "Connected to MASX streaming service",
+    #         "client_id": client_id,
+    #         "filters": filters.dict(),
+    #         },
+    #     )
 
-        await self._send_event_to_client(client_id, welcome_event)
-        logger.info("Client connected", client_id=client_id)
+    #     await self._send_event_to_client(client_id, welcome_event)
+    #     logger.info("Client connected", client_id=client_id)
 
-        return client_id
+    #     return client_id
 
-    async def disconnect_client(self, client_id: str):
-        """Disconnect a client."""
-        await self._disconnect_client(client_id)
+    # async def disconnect_client(self, client_id: str):
+    #     """Disconnect a client."""
+    #     await self._disconnect_client(client_id)
 
-    async def _disconnect_client(self, client_id: str):
-        """Internal client disconnection."""
-        if client_id in self.clients:
-            client = self.clients[client_id]
-            try:
-                await client.websocket.close()
-            except Exception:
-                pass
+    # async def _disconnect_client(self, client_id: str):
+    #     """Internal client disconnection."""
+    #     if client_id in self.clients:
+    #         client = self.clients[client_id]
+    #         try:
+    #             await client.websocket.close()
+    #     except Exception:
+    #         pass
 
-            del self.clients[client_id]
-            self.metrics["active_connections"] = len(self.clients)
-            logger.info("Client disconnected", client_id=client_id)
+    #         del self.clients[client_id]
+    #         self.metrics["active_connections"] = len(self.clients)
+    #         logger.info("Client disconnected", client_id=client_id)
 
-    async def _send_event_to_client(self, client_id: str, event: StreamEvent):
-        """Send event to specific client."""
-        if client_id not in self.clients:
-            return
+    # async def _send_event_to_client(self, client_id: str, event: StreamEvent):
+    #     """Send event to specific client."""
+    #     if client_id not in self.clients:
+    #         return
 
-        client = self.clients[client_id]
+    #     client = self.clients[client_id]
 
-        try:
-            # Check if event matches client filters
-            if event.event_type == StreamEventType.ARTICLE_UPDATE:
-                article = event.data.get("article")
-                if article and not client.filters.matches_article(article):
-                    return
+    #     try:
+    #         # Check if event matches client filters
+    #         if event.event_type == StreamEventType.ARTICLE_UPDATE:
+    #         article = event.data.get("article")
+    #         if article and not client.filters.matches_article(article):
+    #             return
 
-            # Send event
-            event_data = {
-                "event_id": event.event_id,
-                "event_type": event.event_type.value,
-                "timestamp": event.timestamp.isoformat(),
-                "data": event.data,
-                "source": event.source,
-                "priority": event.priority,
-            }
+    #         # Send event
+    #         event_data = {
+    #         "event_id": event.event_id,
+    #         "event_type": event.event_type.value,
+    #         "timestamp": event.timestamp.isoformat(),
+    #         "data": event.data,
+    #         "source": event.source,
+    #         "priority": event.priority,
+    #         }
 
-            await client.websocket.send_text(json.dumps(event_data))
-            client.update_activity()
+    #         await client.websocket.send_text(json.dumps(event_data))
+    #         client.update_activity()
 
-            # Update metrics
-            self.metrics["total_events_sent"] += 1
-            self.metrics["last_event_time"] = datetime.now()
+    #         # Update metrics
+    #         self.metrics["total_events_sent"] += 1
+    #         self.metrics["last_event_time"] = datetime.now()
 
-        except WebSocketDisconnect:
-            await self._disconnect_client(client_id)
-        except Exception as e:
-            logger.error(
-                "Failed to send event to client", client_id=client_id, error=str(e)
-            )
+    #     except WebSocketDisconnect:
+    #         await self._disconnect_client(client_id)
+    #     except Exception as e:
+    #         logger.error(
+    #         "Failed to send event to client", client_id=client_id, error=str(e)
+    #         )
 
     async def broadcast_event(
         self, event: StreamEvent, filter_func: Optional[Callable] = None
@@ -505,22 +505,22 @@ class StreamingService:
             await self._disconnect_client(client_id)
 
 
-class WebSocketManager:
-    """WebSocket connection manager for FastAPI."""
+# class WebSocketManager:
+#     """WebSocket connection manager for FastAPI."""
 
-    def __init__(self, streaming_service: StreamingService):
-        self.streaming_service = streaming_service
+#     def __init__(self, streaming_service: StreamingService):
+#         self.streaming_service = streaming_service
 
-    async def connect(self, websocket: WebSocket, client_id: str):
-        """Handle WebSocket connection."""
-        await self.streaming_service.connect_client(websocket, client_id)
+#     async def connect(self, websocket: WebSocket, client_id: str):
+#         """Handle WebSocket connection."""
+#         await self.streaming_service.connect_client(websocket, client_id)
 
-        try:
-            while True:
-                message = await websocket.receive_text()
-                await self.streaming_service.handle_client_message(client_id, message)
-        except WebSocketDisconnect:
-            await self.streaming_service.disconnect_client(client_id)
-        except Exception as e:
-            logger.error("WebSocket error", client_id=client_id, error=str(e))
-            await self.streaming_service.disconnect_client(client_id)
+#         try:
+#             while True:
+#                 message = await websocket.receive_text()
+#                 await self.streaming_service.handle_client_message(client_id, message)
+#         except WebSocketDisconnect:
+#             await self.streaming_service.disconnect_client(client_id)
+#         except Exception as e:
+#             logger.error("WebSocket error", client_id=client_id, error=str(e))
+#             await self.streaming_service.disconnect_client(client_id)
