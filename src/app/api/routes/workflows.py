@@ -25,7 +25,8 @@ Provides endpoints for:
 - Workflow history
 - Workflow configuration
 """
-
+import asyncio
+import threading
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -69,150 +70,137 @@ class WorkflowStatus(BaseModel):
     estimated_completion: Optional[str] = None
 
 
-@router.post("/execute", response_model=WorkflowResponse)
-async def execute_workflow(request: WorkflowRequest, background_tasks: BackgroundTasks):
-    """
-    Execute a workflow.
+# @router.post("/execute", response_model=WorkflowResponse)
+# async def execute_workflow(request: WorkflowRequest, background_tasks: BackgroundTasks):
+#     """
+#     Execute a workflow.
 
-    Args:
-        request: Workflow execution request
-        background_tasks: FastAPI background tasks
+#     Args:
+#         request: Workflow execution request
+#         background_tasks: FastAPI background tasks
 
-    Returns:
-        WorkflowResponse: Workflow execution response
-    """
-    logger.info(f"Workflow execution requested: {request.workflow_type}")
+#     Returns:
+#         WorkflowResponse: Workflow execution response
+#     """
+#     logger.info(f"Workflow execution requested: {request.workflow_type}")
 
-    try:
-        orchestrator = MASXOrchestrator()
+#     try:
+#         orchestrator = MASXOrchestrator()
 
-        # Execute workflow
-        result = orchestrator.run_workflow(
-            workflow_type=request.workflow_type, input_data=request.input_data
-        )
+#         # Execute workflow
+#         result = orchestrator.run_workflow(
+#             workflow_type=request.workflow_type, input_data=request.input_data
+#         )
 
-        workflow_id = result.workflow_id[0]
-        response = WorkflowResponse(
-            workflow_id=workflow_id,
-            status="completed" if result.workflow.completed else "failed",
-            workflow_type=request.workflow_type,
-            execution_time=result.workflow.execution_time or 0.0,
-            result=(
-                {
-                    "hotspots_count": len(result.metadata.get("hotspots", [])),
-                    "articles_count": len(result.metadata.get("articles", [])),
-                    "domains": result.metadata.get("domains", []),
-                    "errors": [str(e) for e in result.errors],
-                }
-                if result.workflow.completed
-                else None
-            ),
-            error="; ".join([str(e) for e in result.errors]) if result.errors else None,
-        )
+#         workflow_id = result.workflow_id[0]
+#         response = WorkflowResponse(
+#             workflow_id=workflow_id,
+#             status="completed" if result.workflow.completed else "failed",
+#             workflow_type=request.workflow_type,
+#             execution_time=result.workflow.execution_time or 0.0,
+#             result=(
+#                 {
+#                     "hotspots_count": len(result.metadata.get("hotspots", [])),
+#                     "articles_count": len(result.metadata.get("articles", [])),
+#                     "domains": result.metadata.get("domains", []),
+#                     "errors": [str(e) for e in result.errors],
+#                 }
+#                 if result.workflow.completed
+#                 else None
+#             ),
+#             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
+#         )
 
-        logger.info(f"Workflow execution completed: {workflow_id}")
-        return response
+#         logger.info(f"Workflow execution completed: {workflow_id}")
+#         return response
 
-    except Exception as e:
-        logger.error(f"Workflow execution failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Workflow execution failed: {str(e)}"
-        )
+#     except Exception as e:
+#         logger.error(f"Workflow execution failed: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Workflow execution failed: {str(e)}"
+#         )
 
 
 @router.post("/execute/daily")
 async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
     """
-    Execute the daily workflow.
-
-    Args:
-        request: Optional workflow request with input data
-
-    Returns:
-        WorkflowResponse: Workflow execution response
+    Execute the daily workflow as a completely detached background thread.
     """
-    logger.info("Daily workflow execution requested")
-
     try:
-        orchestrator = MASXOrchestrator()
 
-        input_data = request.input_data if request else None
-        result = orchestrator.run_daily_workflow(input_data=input_data)
+        def _run_in_background():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
 
-        workflow_id = result.workflow_id[0]
-        response = WorkflowResponse(
-            workflow_id=workflow_id,
-            status="completed" if result.workflow.completed else "failed",
+                orchestrator = MASXOrchestrator()
+                input_data = request.input_data if request else None
+
+                loop.run_until_complete(orchestrator.run_daily_workflow(input_data=input_data))
+            except Exception as e:
+                logger.error(f"[MASX] Background workflow failed: {e}", exc_info=True)
+
+        # Fire-and-forget
+        threading.Thread(target=_run_in_background, daemon=True).start()
+
+        return WorkflowResponse(
+            workflow_id="",
+            status="started",
             workflow_type="daily",
-            execution_time=result.workflow.execution_time or 0.0,
-            result=(
-                {
-                    "hotspots_count": len(result.metadata.get("hotspots", [])),
-                    "articles_count": len(result.metadata.get("articles", [])),
-                    "domains": result.metadata.get("domains", []),
-                    "errors": [str(e) for e in result.errors],
-                }
-                if result.workflow.completed
-                else None
-            ),
-            error="; ".join([str(e) for e in result.errors]) if result.errors else None,
+            execution_time=0.0,
+            result={"message": "Daily workflow started independently – check status endpoint for progress"}
         )
-
-        logger.info(f"Daily workflow execution completed: {workflow_id}")
-        return response
 
     except Exception as e:
-        logger.error(f"Daily workflow execution failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Daily workflow execution failed: {str(e)}"
-        )
+        logger.error(f"Daily workflow execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Daily workflow execution failed: {str(e)}")
 
 
-@router.post("/execute/detection")
-async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
-    """
-    Execute the detection workflow.
+# @router.post("/execute/detection")
+# async def execute_detection_workflow(request: Optional[WorkflowRequest] = None):
+#     """
+#     Execute the detection workflow.
 
-    Args:
-        request: Optional workflow request with input data
+#     Args:
+#         request: Optional workflow request with input data
 
-    Returns:
-        WorkflowResponse: Workflow execution response
-    """
-    logger.info("Detection workflow execution requested")
+#     Returns:
+#         WorkflowResponse: Workflow execution response
+#     """
+#     logger.info("Detection workflow execution requested")
 
-    try:
-        orchestrator = MASXOrchestrator()
+#     try:
+#         orchestrator = MASXOrchestrator()
 
-        input_data = request.input_data if request else None
-        result = orchestrator.run_detection_workflow(input_data=input_data)
+#         input_data = request.input_data if request else None
+#         result = orchestrator.run_detection_workflow(input_data=input_data)
 
-        workflow_id = result.workflow_id[0]
-        response = WorkflowResponse(
-            workflow_id=workflow_id,
-            status="completed" if result.workflow.completed else "failed",
-            workflow_type="detection",
-            execution_time=result.workflow.execution_time or 0.0,
-            result=(
-                {
-                    "anomalies_detected": len(result.metadata.get("anomalies", [])),
-                    "confidence_score": result.metadata.get("confidence_score", 0.0),
-                    "errors": [str(e) for e in result.errors],
-                }
-                if result.workflow.completed
-                else None
-            ),
-            error="; ".join([str(e) for e in result.errors]) if result.errors else None,
-        )
+#         workflow_id = result.workflow_id[0]
+#         response = WorkflowResponse(
+#             workflow_id=workflow_id,
+#             status="completed" if result.workflow.completed else "failed",
+#             workflow_type="detection",
+#             execution_time=result.workflow.execution_time or 0.0,
+#             result=(
+#                 {
+#                     "anomalies_detected": len(result.metadata.get("anomalies", [])),
+#                     "confidence_score": result.metadata.get("confidence_score", 0.0),
+#                     "errors": [str(e) for e in result.errors],
+#                 }
+#                 if result.workflow.completed
+#                 else None
+#             ),
+#             error="; ".join([str(e) for e in result.errors]) if result.errors else None,
+#         )
 
-        logger.info(f"Detection workflow execution completed: {workflow_id}")
-        return response
+#         logger.info(f"Detection workflow execution completed: {workflow_id}")
+#         return response
 
-    except Exception as e:
-        logger.error(f"Detection workflow execution failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Detection workflow execution failed: {str(e)}"
-        )
+#     except Exception as e:
+#         logger.error(f"Detection workflow execution failed: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Detection workflow execution failed: {str(e)}"
+#         )
 
 
 @router.get("/status/{workflow_id}", response_model=WorkflowStatus)
@@ -230,6 +218,10 @@ async def get_workflow_status(workflow_id: str):
 
     try:
         # This would typically query a database or cache for workflow status
+        # get the workflow status from the orchestrator
+        orchestrator = MASXOrchestrator()
+        status = orchestrator.get_workflow_status(workflow_id)
+        
         # For now, return a mock status
         status = WorkflowStatus(
             workflow_id=workflow_id,
