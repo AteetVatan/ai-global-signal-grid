@@ -50,14 +50,7 @@ def main():
         print("[DEBUG] Starting orchestrator.run_daily_workflow()...")
         final_state: MASXState = orchestrator.run_daily_workflow(input_data)
         print("[DEBUG] Workflow completed.")
-        print("\n===== FINAL STATE =====")
-        print(json.dumps(final_state.model_dump(), indent=2, default=str))
-        if final_state.errors:
-            print("\n===== ERRORS =====")
-            for err in final_state.errors:
-                print(f"[ERROR] {err}")
-        else:
-            print("[DEBUG] No errors detected.")
+        print("\n===== FINAL STATE =====")       
     except Exception as e:
         print(f"[FATAL] Exception during workflow: {e}")
         import traceback
