@@ -347,3 +347,12 @@ def get_service_logger(service_name: str) -> structlog.stdlib.BoundLogger:
     Returns: Configured structured logger
     """
     return structlog.get_logger(f"service.{service_name}")
+
+
+def get_api_logger(api_name: str) -> structlog.stdlib.BoundLogger:
+    """
+    Get a structured logger for a api module.
+    api_name: Name of the api (e.g., 'api')
+    Returns: Configured structured logger
+    """
+    return structlog.get_logger(f"api.{api_name}")
