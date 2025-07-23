@@ -134,6 +134,7 @@ class Settings(BaseSettings):
     api_secret_key: str = Field(
         default="change_this_in_production", description="API secret key for security"
     )
+    api_reload: bool = Field(default=False, description="API reload")
 
     # Scheduling Configuration
     daily_run_time: str = Field(default="00:00", description="Daily run time (HH:MM)")
@@ -203,6 +204,7 @@ class Settings(BaseSettings):
     mock_external_apis: bool = Field(
         default=False, description="Mock external APIs in testing"
     )
+    enable_api_docs: bool = Field(default=True, description="Enable GDELT integration")
 
     # Validators
     @validator("environment")
