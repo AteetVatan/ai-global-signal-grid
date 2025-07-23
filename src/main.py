@@ -32,8 +32,8 @@ Usage:
 """
 
 import uvicorn
-from app.api import create_app
-from app.config.settings import get_settings
+from src.app.api import create_app
+from src.app.config.settings import get_settings
 
 # Create FastAPI application
 app = create_app()
