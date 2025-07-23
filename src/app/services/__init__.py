@@ -40,7 +40,8 @@ from .llm_service import LLMService
 from .feed_parser_service import FeedParserService
 from .data_sources import DataSourcesService, Article, GDELTEvent
 from .data_processing import DataProcessingPipeline, ProcessedArticle, TrendAnalysis
-from .streaming import StreamingService, WebSocketManager, StreamEvent, StreamFilter
+from .streaming import StreamingService, StreamEvent, StreamFilter
+# from .streaming import WebSocketManager  # Commented out WebSocket functionality
 from .analytics import DataAnalyticsService, AnalyticsReport, RiskAssessment
 from .token_tracker import TokenCostTracker, get_token_tracker
 from .web_search import WebSearchService, create_web_search_service
@@ -67,7 +68,7 @@ __all__ = [
     "ProcessedArticle",
     "TrendAnalysis",
     "StreamingService",
-    "WebSocketManager",
+    # "WebSocketManager",  # Commented out WebSocket functionality
     "StreamEvent",
     "StreamFilter",
     "DataAnalyticsService",
