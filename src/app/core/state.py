@@ -30,8 +30,8 @@ from typing import Any, Dict, List, Optional, Annotated
 from datetime import datetime
 import operator
 from pydantic import BaseModel, Field
-from app.core.flashpoint import FlashpointDataset, FlashpointItem
-
+from .flashpoint import FlashpointDataset, FlashpointItem
+#from app.core.flashpoint import FlashpointDataset, FlashpointItem
 
 class AgentState(BaseModel):
     """
