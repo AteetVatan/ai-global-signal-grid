@@ -19,515 +19,784 @@
 """
 Data retrieval endpoints for Global Signal Grid (MASX) Agentic AI System.
 
-Provides endpoints for:
-- Hotspot data retrieval
-- Article data retrieval
+This module provides RESTful API endpoints for accessing flashpoint and feed data
+from the Supabase database with built-in rate limiting and pagination support.
+
+Key Features:
+- Flashpoint data retrieval with paging
+- Feed data retrieval with paging  
 - Analytics and statistics
-- Search and filtering
+- Search and filtering capabilities
+- Rate limiting (60 requests per minute)
+- Health monitoring
+
+Example Usage:
+    # Get all flashpoints (page 1, 50 items)
+    GET /api/data/flashpoints?page=1&page_size=50
+
+    # Get feeds for specific flashpoint
+    GET /api/data/flashpoints/123e4567-e89b-12d3-a456-426614174000/feeds?page=1&page_size=25
+
+    # Get all feeds with filtering
+    GET /api/data/feeds?page=1&page_size=100&language=en&domain=news.com
+
+    # Check rate limit status
+    GET /api/data/rate-limit
+
+    # Get statistics
+    GET /api/data/stats?date=2025-01-20
 """
 
+# Standard library imports
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from datetime import datetime, timedelta
+from collections import defaultdict
+import json
+import threading
+import time
+
+# Third-party imports
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 
+# Local imports
 from ...config.logging_config import get_api_logger
-from ...services import DatabaseService
+from ...config.settings import get_settings
+from ...core.exceptions import DatabaseException, ConfigurationException
 
+# Initialize router and logger
 router = APIRouter()
 logger = get_api_logger("DataRoutes")
 
+# =============================================================================
+# RATE LIMITING CONFIGURATION
+# =============================================================================
+
+# Rate limiting settings - 1000 requests per minute per client IP
+RATE_LIMIT_REQUESTS = 1000  # Maximum requests allowed
+RATE_LIMIT_WINDOW = 60    # Time window in seconds (1 minute)
+
+# Global storage for rate limiting (client IP -> list of request timestamps)
+client_requests = defaultdict(list)
+rate_limit_lock = threading.RLock()  # Thread-safe lock for concurrent access
+
+# =============================================================================
+# PYDANTIC MODELS FOR API RESPONSES
+# =============================================================================
 
 class FlashpointResponse(BaseModel):
-    """Flashpoint response model."""
-
+    """Response model for flashpoint data."""
     id: str
     title: str
-    summary: str
+    description: str
+    entities: List[str]
     domains: List[str]
-    entities: Dict[str, List[str]]
-    articles: List[str]
-    confidence_score: float
+    run_id: Optional[str]
     created_at: str
     updated_at: str
 
 
 class FeedResponse(BaseModel):
-    """Feed response model."""
-
+    """Response model for feed data."""
     id: str
+    flashpoint_id: str
     url: str
     title: str
-    content: str
-    source: str
-    language: str
-    published_at: Optional[str]
-    entities: Dict[str, List[str]]
+    seendate: Optional[str]
+    domain: Optional[str]
+    language: Optional[str]
+    sourcecountry: Optional[str]
+    description: Optional[str]
+    image: Optional[str]
     created_at: str
+    updated_at: str
 
 
-class AnalyticsResponse(BaseModel):
-    """Analytics response model."""
+class PaginatedResponse(BaseModel):
+    """Wrapper for paginated API responses."""
+    data: List[Any]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
 
-    total_hotspots: int
-    total_articles: int
-    domains_distribution: Dict[str, int]
-    sources_distribution: Dict[str, int]
-    languages_distribution: Dict[str, int]
-    time_series: List[Dict[str, Any]]
+
+class RateLimitResponse(BaseModel):
+    """Response model for rate limit information."""
+    remaining: int
+    reset_time: str
+    limit: int
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+async def get_supabase_client() -> Client:
+    """
+    Create and return a configured Supabase client.
+    
+    Returns:
+        Client: Configured Supabase client instance
+        
+    Raises:
+        ConfigurationException: If Supabase credentials are missing
+    """
+    settings = get_settings()
+    
+    # Validate required configuration
+    if not settings.supabase_url or not settings.supabase_anon_key:
+        raise ConfigurationException("Supabase URL and key are required")
+    
+    # Configure client options
+    options = ClientOptions(
+        schema="public", 
+        headers={"X-Client-Info": "masx-ai-system"}
+    )
+    
+    # Create and return client
+    client = create_client(
+        settings.supabase_url,
+        settings.supabase_anon_key,
+        options=options,
+    )
+    
+    return client
 
 
-@router.get("/flashpoints", response_model=List[FlashpointResponse])
-async def get_flashpoints(
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    domains: Optional[str] = Query(None, description="Comma-separated list of domains"),
+def get_daily_table_name(base: str, date: Optional[datetime] = None) -> str:
+    """
+    Generate daily table name using the format: base_YYYYMMDD.
+    
+    Args:
+        base: Base table name (e.g., 'flash_point', 'feed_entries')
+        date: Target date (defaults to current UTC date)
+        
+    Returns:
+        str: Formatted table name
+    """
+    date = date or datetime.utcnow()
+    return f"{base}_{date.strftime('%Y%m%d')}"
+
+
+def parse_json_field(field_value: Any) -> List[str]:
+    """
+    Safely parse JSON field that might be stored as string or list.
+    
+    Args:
+        field_value: Field value that could be JSON string or list
+        
+    Returns:
+        List[str]: Parsed list of strings
+    """
+    if isinstance(field_value, str):
+        try:
+            return json.loads(field_value)
+        except json.JSONDecodeError:
+            return []
+    elif isinstance(field_value, list):
+        return field_value
+    else:
+        return []
+
+# =============================================================================
+# RATE LIMITING FUNCTIONS
+# =============================================================================
+
+async def check_rate_limit(request: Request) -> RateLimitResponse:
+    """
+    Check and enforce rate limiting for the incoming request.
+    
+    This function implements a sliding window rate limiter that tracks
+    requests per client IP address within a 1-minute window.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        RateLimitResponse: Rate limit information
+        
+    Raises:
+        HTTPException: 429 status when rate limit is exceeded
+    """
+    client_ip = request.client.host
+    
+    with rate_limit_lock:
+        now = time.time()
+        window_start = now - RATE_LIMIT_WINDOW
+        
+        # Get client's request history and clean expired entries
+        client_history = client_requests[client_ip]
+        client_history = [req_time for req_time in client_history if req_time >= window_start]
+        client_requests[client_ip] = client_history
+        
+        # Calculate remaining requests
+        remaining = max(0, RATE_LIMIT_REQUESTS - len(client_history))
+        
+        # Calculate reset time (when oldest request expires)
+        reset_time = None
+        if client_history:
+            oldest_request = min(client_history)
+            reset_time = datetime.fromtimestamp(oldest_request + RATE_LIMIT_WINDOW)
+        
+        # If client has requests remaining, add current request
+        if remaining > 0:
+            client_history.append(now)
+            client_requests[client_ip] = client_history
+            remaining -= 1
+        
+        # Raise exception if rate limit exceeded
+        if remaining <= 0:
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit exceeded. Reset time: {reset_time}"
+            )
+        
+        return RateLimitResponse(
+            remaining=remaining,
+            reset_time=reset_time.isoformat() if reset_time else "",
+            limit=RATE_LIMIT_REQUESTS
+        )
+
+# =============================================================================
+# API ENDPOINTS
+# =============================================================================
+
+@router.get("/flashpoints", response_model=PaginatedResponse)
+async def get_all_flashpoints(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
+    date: Optional[str] = Query(None, description="Date filter (YYYY-MM-DD format)"),
     run_id: Optional[str] = Query(None, description="Filter by run ID"),
-    sort_by: str = Query("created_at", description="Sort field"),
-    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+    rate_limit: RateLimitResponse = Depends(check_rate_limit)
 ):
     """
-    Get flashpoints with optional filtering.
-
+    Retrieve all flashpoints with pagination and filtering support.
+    
+    This endpoint returns flashpoint data from the daily flashpoint table
+    with support for pagination, date filtering, and run ID filtering.
+    
     Args:
-        limit: Maximum number of hotspots to return
-        offset: Number of hotspots to skip
-        domains: Filter by domains (comma-separated)
-        run_id: Filter by run ID
-        sort_by: Field to sort by
-        sort_order: Sort order
-
+        request: FastAPI request object
+        page: Page number (1-based indexing)
+        page_size: Number of items per page (1-200)
+        date: Optional date filter in YYYY-MM-DD format
+        run_id: Optional run ID filter
+        rate_limit: Rate limit check (injected dependency)
+        
     Returns:
-        List of hotspot records
+        PaginatedResponse: Paginated flashpoint data
+        
+    Raises:
+        HTTPException: 400 for invalid date format, 500 for server errors
     """
-    logger.info("Flashpoints retrieval requested")
-
+    logger.info(f"Flashpoints retrieval requested - page: {page}, size: {page_size}")
+    
     try:
-        async with DatabaseService() as db:
-            # Parse domains filter
-            domain_list = None
-            if domains:
-                domain_list = [d.strip() for d in domains.split(",")]
-
-            hotspots = await db.get_hotspots(
-                limit=limit, offset=offset, domains=domain_list, run_id=run_id
-            )
-
-            # Convert to response format
-            response_data = []
-            for hotspot in hotspots:
-                response_data.append(
-                    FlashpointResponse(
-                        id=hotspot.id or "",
-                        title=hotspot.title,
-                        summary=hotspot.summary,
-                        domains=hotspot.domains,
-                        entities=hotspot.entities,
-                        articles=hotspot.articles,
-                        confidence_score=hotspot.confidence_score,
-                        created_at=(
-                            hotspot.created_at.isoformat() if hotspot.created_at else ""
-                        ),
-                        updated_at=(
-                            hotspot.updated_at.isoformat() if hotspot.updated_at else ""
-                        ),
-                    )
+        # Get Supabase client
+        client = await get_supabase_client()
+        
+        # Determine table name based on date parameter
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+                table_name = get_daily_table_name("flash_point", target_date)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid date format. Use YYYY-MM-DD"
                 )
-
-            logger.info(f"Flashpoints retrieved: {len(response_data)} records")
-            return response_data
-
+        else:
+            table_name = get_daily_table_name("flash_point")
+        
+        # Calculate pagination offset
+        offset = (page - 1) * page_size
+        
+        # Build base query
+        query = client.table(table_name).select("*")
+        
+        # Apply run_id filter if provided
+        if run_id:
+            query = query.eq("run_id", run_id)
+        
+        # Get total count for pagination metadata
+        count_result = query.execute()
+        total = len(count_result.data) if count_result.data else 0
+        
+        # Get paginated data
+        result = query.range(offset, offset + page_size - 1).execute()
+        
+        # Handle empty results
+        if not result.data:
+            return PaginatedResponse(
+                data=[],
+                total=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0,
+                has_next=False,
+                has_prev=False
+            )
+        
+        # Convert database records to response models
+        flashpoints = []
+        for fp in result.data:
+            flashpoints.append(FlashpointResponse(
+                id=fp.get("id", ""),
+                title=fp.get("title", ""),
+                description=fp.get("description", ""),
+                entities=parse_json_field(fp.get("entities")),
+                domains=parse_json_field(fp.get("domains")),
+                run_id=fp.get("run_id"),
+                created_at=fp.get("created_at", ""),
+                updated_at=fp.get("updated_at", "")
+            ))
+        
+        # Calculate pagination metadata
+        total_pages = (total + page_size - 1) // page_size
+        
+        logger.info(f"Flashpoints retrieved: {len(flashpoints)} records, total: {total}")
+        
+        return PaginatedResponse(
+            data=flashpoints,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_prev=page > 1
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Flashpoints retrieval failed: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Flashpoints retrieval failed: {str(e)}"
+            status_code=500, 
+            detail=f"Flashpoints retrieval failed: {str(e)}"
         )
 
 
-@router.get("/flashpoints/{flashpoint_id}", response_model=FlashpointResponse)
-async def get_flashpoint(flashpoint_id: str):
+@router.get("/flashpoints/{flashpoint_id}/feeds", response_model=PaginatedResponse)
+async def get_feeds_per_flashpoint(
+    flashpoint_id: str,
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
+    date: Optional[str] = Query(None, description="Date filter (YYYY-MM-DD format)"),
+    rate_limit: RateLimitResponse = Depends(check_rate_limit)
+):
     """
-    Get a specific flashpoint by ID.
-
+    Retrieve feeds associated with a specific flashpoint.
+    
+    This endpoint returns feed data that belongs to the specified flashpoint,
+    with support for pagination and date filtering.
+    
     Args:
-        flashpoint_id: Flashpoint ID
-
+        flashpoint_id: UUID of the flashpoint
+        request: FastAPI request object
+        page: Page number (1-based indexing)
+        page_size: Number of items per page (1-200)
+        date: Optional date filter in YYYY-MM-DD format
+        rate_limit: Rate limit check (injected dependency)
+        
     Returns:
-        Flashpoint record
+        PaginatedResponse: Paginated feed data for the flashpoint
+        
+    Raises:
+        HTTPException: 400 for invalid date format, 500 for server errors
     """
-    logger.info(f"Flashpoint retrieval requested: {flashpoint_id}")       
-
+    logger.info(f"Feeds per flashpoint requested - flashpoint_id: {flashpoint_id}, page: {page}")
+    
     try:
-        async with DatabaseService() as db:
-            flashpoint = await db.get_flashpoint(flashpoint_id)
-
-            if not flashpoint:
+        # Get Supabase client
+        client = await get_supabase_client()
+        
+        # Determine table name based on date parameter
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+                feed_table = get_daily_table_name("feed_entries", target_date)
+            except ValueError:
                 raise HTTPException(
-                    status_code=404, detail=f"Flashpoint {flashpoint_id} not found"
+                    status_code=400, 
+                    detail="Invalid date format. Use YYYY-MM-DD"
                 )
-
-            response = FlashpointResponse(
-                id=flashpoint.id or "",
-                title=flashpoint.title,
-                summary=flashpoint.summary,
-                domains=flashpoint.domains,
-                entities=flashpoint.entities,
-                articles=flashpoint.articles,
-                confidence_score=flashpoint.confidence_score,
-                created_at=flashpoint.created_at.isoformat() if flashpoint.created_at else "",
-                updated_at=flashpoint.updated_at.isoformat() if flashpoint.updated_at else "",
-            )
-
-            logger.info(f"Flashpoint retrieved: {flashpoint_id}")
-            return response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Hotspot retrieval failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Hotspot retrieval failed: {str(e)}"
-        )
-
-
-@router.get("/feeds", response_model=List[FeedResponse])
-async def get_feeds(
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    language: Optional[str] = Query(None, description="Filter by language"),
-    source: Optional[str] = Query(None, description="Filter by source"),
-    sort_by: str = Query("created_at", description="Sort field"),
-    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
-):
-    """
-    Get feeds with optional filtering.
-
-    Args:
-        limit: Maximum number of feeds to return
-        offset: Number of feeds to skip
-        language: Filter by language
-        source: Filter by source
-        sort_by: Field to sort by
-        sort_order: Sort order
-
-    Returns:
-        List of feed records
-    """
-    logger.info("Feeds retrieval requested")
-
-    try:
-        async with DatabaseService() as db:
-            feeds = await db.get_feeds(
-                limit=limit, offset=offset, language=language, source=source
-            )
-
-            # Convert to response format
-            response_data = []
-            for feed in feeds:
-                response_data.append(
-                    FeedResponse(
-                        id=feed.id or "",
-                        url=feed.url,
-                        title=feed.title,
-                        content=feed.content,
-                        source=feed.source,
-                        language=feed.language,
-                        published_at=(
-                            feed.published_at.isoformat()
-                            if feed.published_at
-                            else None
-                        ),
-                        entities=feed.entities,
-                        created_at=(
-                            feed.created_at.isoformat() if feed.created_at else ""
-                        ),
-                    )
-                )
-
-            logger.info(f"Feeds retrieved: {len(response_data)} records")
-            return response_data
-
-    except Exception as e:
-        logger.error(f"Feeds retrieval failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Feeds retrieval failed: {str(e)}"
-        )
-
-
-# @router.get("/search")
-# async def search_data(
-#     query: str = Query(..., description="Search query"),
-#     search_type: str = Query("hotspots", description="Search type (hotspots/articles)"),
-#     limit: int = Query(10, ge=1, le=100),
-#     similarity_threshold: float = Query(0.7, ge=0.0, le=1.0),
-# ):
-#     """
-#     Search data using vector similarity.
-
-#     Args:
-#         query: Search query text
-#         search_type: Type of data to search
-#         limit: Maximum number of results
-#         similarity_threshold: Minimum similarity score
-
-#     Returns:
-#         Search results
-#     """
-#     logger.info(f"Data search requested: {query}")
-
-#     try:
-#         from ...services import EmbeddingService
-
-#         async with EmbeddingService() as embedder:
-#             # Generate embedding for query
-#             embedding_result = await embedder.embed_text(query)
-
-#             if search_type == "hotspots":
-#                 async with DatabaseService() as db:
-#                     similar_hotspots = await db.search_hotspots_by_similarity(
-#                         embedding=embedding_result.embedding,
-#                         limit=limit,
-#                         similarity_threshold=similarity_threshold,
-#                     )
-
-#                     results = []
-#                     for hotspot in similar_hotspots:
-#                         results.append(
-#                             {
-#                                 "id": hotspot.id,
-#                                 "title": hotspot.title,
-#                                 "summary": hotspot.summary,
-#                                 "similarity_score": hotspot.confidence_score,
-#                                 "domains": hotspot.domains,
-#                                 "created_at": (
-#                                     hotspot.created_at.isoformat()
-#                                     if hotspot.created_at
-#                                     else None
-#                                 ),
-#                             }
-#                         )
-
-#                     logger.info(f"Search completed: {len(results)} results")
-#                     return {
-#                         "query": query,
-#                         "search_type": search_type,
-#                         "results": results,
-#                         "total": len(results),
-#                     }
-#             else:
-#                 raise HTTPException(
-#                     status_code=400, detail=f"Unsupported search type: {search_type}"
-#                 )
-
-#     except Exception as e:
-#         logger.error(f"Data search failed: {e}")
-#         raise HTTPException(status_code=500, detail=f"Data search failed: {str(e)}")
-
-
-# @router.get("/analytics", response_model=AnalyticsResponse)
-# async def get_analytics(
-#     days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
-# ):
-#     """
-#     Get analytics and statistics.
-
-#     Args:
-#         days: Number of days to analyze
-
-#     Returns:
-#         Analytics data
-#     """
-#     logger.info("Analytics requested")
-
-#     try:
-#         async with DatabaseService() as db:
-#             # Get database statistics
-#             stats = await db.get_database_stats()
-
-#             # Get recent hotspots and articles
-#             from datetime import datetime, timedelta
-
-#             cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-#             recent_hotspots = await db.get_hotspots(limit=1000)
-#             recent_articles = await db.get_articles(limit=1000)
-
-#             # Calculate distributions
-#             domains_distribution = {}
-#             sources_distribution = {}
-#             languages_distribution = {}
-
-#             for hotspot in recent_hotspots:
-#                 for domain in hotspot.domains:
-#                     domains_distribution[domain] = (
-#                         domains_distribution.get(domain, 0) + 1
-#                     )
-
-#             for article in recent_articles:
-#                 sources_distribution[article.source] = (
-#                     sources_distribution.get(article.source, 0) + 1
-#                 )
-#                 languages_distribution[article.language] = (
-#                     languages_distribution.get(article.language, 0) + 1
-#                 )
-
-#             # Generate time series data (mock for now)
-#             time_series = []
-#             for i in range(days):
-#                 date = datetime.utcnow() - timedelta(days=i)
-#                 time_series.append(
-#                     {
-#                         "date": date.date().isoformat(),
-#                         "hotspots_count": len(
-#                             [
-#                                 h
-#                                 for h in recent_hotspots
-#                                 if h.created_at and h.created_at.date() == date.date()
-#                             ]
-#                         ),
-#                         "articles_count": len(
-#                             [
-#                                 a
-#                                 for a in recent_articles
-#                                 if a.created_at and a.created_at.date() == date.date()
-#                             ]
-#                         ),
-#                     }
-#                 )
-
-#             analytics = AnalyticsResponse(
-#                 total_hotspots=stats.get("hotspots_count", 0),
-#                 total_articles=stats.get("articles_count", 0),
-#                 domains_distribution=domains_distribution,
-#                 sources_distribution=sources_distribution,
-#                 languages_distribution=languages_distribution,
-#                 time_series=time_series,
-#             )
-
-#             logger.info("Analytics generated successfully")
-#             return analytics
-
-#     except Exception as e:
-#         logger.error(f"Analytics generation failed: {e}")
-#         raise HTTPException(
-#             status_code=500, detail=f"Analytics generation failed: {str(e)}"
-#         )
-
-
-# @router.get("/stats")
-# async def get_data_stats():
-#     """
-#     Get data statistics.
-
-#     Returns:
-#         Data statistics
-#     """
-#     logger.info("Data statistics requested")
-
-#     try:
-#         async with DatabaseService() as db:
-#             stats = await db.get_database_stats()
-
-#             logger.info("Data statistics retrieved")
-#             return stats
-
-#     except Exception as e:
-#         logger.error(f"Data statistics retrieval failed: {e}")
-#         raise HTTPException(
-#             status_code=500, detail=f"Data statistics retrieval failed: {str(e)}"
-#         )
-
-
-@router.get("/export")
-async def export_data(
-    data_type: str = Query(..., description="Data type to export (flashpoints/feeds)"),
-    format: str = Query("json", description="Export format (json/csv)"),
-    limit: int = Query(1000, ge=1, le=10000),
-):
-    """
-    Export data in various formats.
-
-    Args:
-        data_type: Type of data to export
-        format: Export format
-        limit: Maximum number of records
-
-    Returns:
-        Exported data
-    """
-    logger.info(f"Data export requested: {data_type} in {format} format")
-
-    try:
-        if data_type == "flashpoints":
-            async with DatabaseService() as db:
-                flashpoints = await db.get_flashpoints(limit=limit)
-
-                if format == "json":
-                    return {
-                        "type": "flashpoints",
-                        "format": "json",
-                        "count": len(flashpoints),
-                        "data": [
-                            {
-                                "id": f.id,
-                                "title": f.title,
-                                "summary": f.summary,
-                                "domains": f.domains,
-                                "entities": f.entities,
-                                "articles": f.articles,
-                                "confidence_score": f.confidence_score,
-                                "created_at": (
-                                    f.created_at.isoformat() if f.created_at else None
-                                ),
-                            }
-                            for f in flashpoints
-                        ],
-                    }
-                else:
-                    raise HTTPException(
-                        status_code=400, detail=f"Unsupported format: {format}"
-                    )
-
-        elif data_type == "feeds":
-            async with DatabaseService() as db:
-                feeds = await db.get_feeds(limit=limit)
-
-                if format == "json":
-                    return {
-                        "type": "feeds",
-                        "format": "json",
-                        "count": len(feeds),
-                        "data": [
-                            {
-                                "id": f.id,
-                                "url": f.url,
-                                "title": f.title,
-                                "content": f.content,
-                                "source": f.source,
-                                "language": f.language,
-                                "published_at": (
-                                    f.published_at.isoformat()
-                                    if f.published_at
-                                    else None
-                                ),
-                                "entities": f.entities,
-                                "created_at": (
-                                    f.created_at.isoformat() if f.created_at else None
-                                ),
-                            }
-                            for f in feeds
-                        ],
-                    }
-                else:
-                    raise HTTPException(
-                        status_code=400, detail=f"Unsupported format: {format}"
-                    )
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Unsupported data type: {data_type}"
+            feed_table = get_daily_table_name("feed_entries")
+        
+        # Calculate pagination offset
+        offset = (page - 1) * page_size
+        
+        # Build query for feeds belonging to the flashpoint
+        query = client.table(feed_table).select("*").eq("flashpoint_id", flashpoint_id)
+        
+        # Get total count for pagination metadata
+        count_result = query.execute()
+        total = len(count_result.data) if count_result.data else 0
+        
+        # Get paginated data
+        result = query.range(offset, offset + page_size - 1).execute()
+        
+        # Handle empty results
+        if not result.data:
+            return PaginatedResponse(
+                data=[],
+                total=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0,
+                has_next=False,
+                has_prev=False
             )
-
+        
+        # Convert database records to response models
+        feeds = []
+        for feed in result.data:
+            feeds.append(FeedResponse(
+                id=feed.get("id", ""),
+                flashpoint_id=feed.get("flashpoint_id", ""),
+                url=feed.get("url", ""),
+                title=feed.get("title", ""),
+                seendate=feed.get("seendate"),
+                domain=feed.get("domain"),
+                language=feed.get("language"),
+                sourcecountry=feed.get("sourcecountry"),
+                description=feed.get("description"),
+                image=feed.get("image"),
+                created_at=feed.get("created_at", ""),
+                updated_at=feed.get("updated_at", "")
+            ))
+        
+        # Calculate pagination metadata
+        total_pages = (total + page_size - 1) // page_size
+        
+        logger.info(f"Feeds per flashpoint retrieved: {len(feeds)} records, total: {total}")
+        
+        return PaginatedResponse(
+            data=feeds,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_prev=page > 1
+        )
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Data export failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Data export failed: {str(e)}")
+        logger.error(f"Feeds per flashpoint retrieval failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Feeds per flashpoint retrieval failed: {str(e)}"
+        )
+
+
+@router.get("/feeds", response_model=PaginatedResponse)
+async def get_all_feeds(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
+    date: Optional[str] = Query(None, description="Date filter (YYYY-MM-DD format)"),
+    language: Optional[str] = Query(None, description="Filter by language code"),
+    domain: Optional[str] = Query(None, description="Filter by domain name"),
+    rate_limit: RateLimitResponse = Depends(check_rate_limit)
+):
+    """
+    Retrieve all feeds with pagination and filtering support.
+    
+    This endpoint returns feed data from the daily feed entries table
+    with support for pagination, date filtering, language filtering,
+    and domain filtering.
+    
+    Args:
+        request: FastAPI request object
+        page: Page number (1-based indexing)
+        page_size: Number of items per page (1-200)
+        date: Optional date filter in YYYY-MM-DD format
+        language: Optional language filter (e.g., 'en', 'es', 'fr')
+        domain: Optional domain filter (e.g., 'news.com', 'blog.org')
+        rate_limit: Rate limit check (injected dependency)
+        
+    Returns:
+        PaginatedResponse: Paginated feed data
+        
+    Raises:
+        HTTPException: 400 for invalid date format, 500 for server errors
+    """
+    logger.info(f"All feeds retrieval requested - page: {page}, size: {page_size}")
+    
+    try:
+        # Get Supabase client
+        client = await get_supabase_client()
+        
+        # Determine table name based on date parameter
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+                feed_table = get_daily_table_name("feed_entries", target_date)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            feed_table = get_daily_table_name("feed_entries")
+        
+        # Calculate pagination offset
+        offset = (page - 1) * page_size
+        
+        # Build base query
+        query = client.table(feed_table).select("*")
+        
+        # Apply filters if provided
+        if language:
+            query = query.eq("language", language)
+        
+        if domain:
+            query = query.eq("domain", domain)
+        
+        # Get total count for pagination metadata
+        count_result = query.execute()
+        total = len(count_result.data) if count_result.data else 0
+        
+        # Get paginated data
+        result = query.range(offset, offset + page_size - 1).execute()
+        
+        # Handle empty results
+        if not result.data:
+            return PaginatedResponse(
+                data=[],
+                total=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0,
+                has_next=False,
+                has_prev=False
+            )
+        
+        # Convert database records to response models
+        feeds = []
+        for feed in result.data:
+            feeds.append(FeedResponse(
+                id=feed.get("id", ""),
+                flashpoint_id=feed.get("flashpoint_id", ""),
+                url=feed.get("url", ""),
+                title=feed.get("title", ""),
+                seendate=feed.get("seendate"),
+                domain=feed.get("domain"),
+                language=feed.get("language"),
+                sourcecountry=feed.get("sourcecountry"),
+                description=feed.get("description"),
+                image=feed.get("image"),
+                created_at=feed.get("created_at", ""),
+                updated_at=feed.get("updated_at", "")
+            ))
+        
+        # Calculate pagination metadata
+        total_pages = (total + page_size - 1) // page_size
+        
+        logger.info(f"All feeds retrieved: {len(feeds)} records, total: {total}")
+        
+        return PaginatedResponse(
+            data=feeds,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_prev=page > 1
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"All feeds retrieval failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"All feeds retrieval failed: {str(e)}"
+        )
+
+
+@router.get("/rate-limit", response_model=RateLimitResponse)
+async def get_rate_limit_status(request: Request):
+    """
+    Get current rate limit status for the requesting client.
+    
+    This endpoint provides information about the client's current rate limit
+    status without consuming a request from their quota.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        RateLimitResponse: Current rate limit information
+    """
+    client_ip = request.client.host
+    
+    with rate_limit_lock:
+        now = time.time()
+        window_start = now - RATE_LIMIT_WINDOW
+        
+        # Get client's request history and clean expired entries
+        client_history = client_requests[client_ip]
+        client_history = [req_time for req_time in client_history if req_time >= window_start]
+        client_requests[client_ip] = client_history
+        
+        # Calculate remaining requests
+        remaining = max(0, RATE_LIMIT_REQUESTS - len(client_history))
+        
+        # Calculate reset time
+        reset_time = None
+        if client_history:
+            oldest_request = min(client_history)
+            reset_time = datetime.fromtimestamp(oldest_request + RATE_LIMIT_WINDOW)
+        
+        return RateLimitResponse(
+            remaining=remaining,
+            reset_time=reset_time.isoformat() if reset_time else "",
+            limit=RATE_LIMIT_REQUESTS
+        )
+
+
+@router.get("/stats")
+async def get_data_stats(
+    request: Request,
+    date: Optional[str] = Query(None, description="Date filter (YYYY-MM-DD format)"),
+    rate_limit: RateLimitResponse = Depends(check_rate_limit)
+):
+    """
+    Get comprehensive statistics about flashpoints and feeds data.
+    
+    This endpoint provides aggregated statistics including total counts,
+    domain distribution, language distribution, and table information.
+    
+    Args:
+        request: FastAPI request object
+        date: Optional date filter in YYYY-MM-DD format
+        rate_limit: Rate limit check (injected dependency)
+        
+    Returns:
+        dict: Statistics data including counts and distributions
+        
+    Raises:
+        HTTPException: 400 for invalid date format, 500 for server errors
+    """
+    logger.info("Data statistics requested")
+    
+    try:
+        # Get Supabase client
+        client = await get_supabase_client()
+        
+        # Determine table names based on date parameter
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+                flashpoint_table = get_daily_table_name("flash_point", target_date)
+                feed_table = get_daily_table_name("feed_entries", target_date)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            flashpoint_table = get_daily_table_name("flash_point")
+            feed_table = get_daily_table_name("feed_entries")
+        
+        # Get flashpoint count
+        flashpoint_result = client.table(flashpoint_table).select("id", count="exact").execute()
+        flashpoint_count = flashpoint_result.count if hasattr(flashpoint_result, 'count') else len(flashpoint_result.data or [])
+        
+        # Get feed count
+        feed_result = client.table(feed_table).select("id", count="exact").execute()
+        feed_count = feed_result.count if hasattr(feed_result, 'count') else len(feed_result.data or [])
+        
+        # Get domain distribution from feeds
+        domain_result = client.table(feed_table).select("domain").execute()
+        domain_distribution = defaultdict(int)
+        if domain_result.data:
+            for feed in domain_result.data:
+                domain = feed.get("domain")
+                if domain:
+                    domain_distribution[domain] += 1
+        
+        # Get language distribution from feeds
+        language_result = client.table(feed_table).select("language").execute()
+        language_distribution = defaultdict(int)
+        if language_result.data:
+            for feed in language_result.data:
+                language = feed.get("language")
+                if language:
+                    language_distribution[language] += 1
+        
+        # Compile statistics
+        stats = {
+            "total_flashpoints": flashpoint_count,
+            "total_feeds": feed_count,
+            "domain_distribution": dict(domain_distribution),
+            "language_distribution": dict(language_distribution),
+            "date": date or datetime.utcnow().strftime("%Y-%m-%d"),
+            "tables": {
+                "flashpoint_table": flashpoint_table,
+                "feed_table": feed_table
+            }
+        }
+        
+        logger.info(f"Statistics generated: {stats}")
+        return stats
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Statistics generation failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Statistics generation failed: {str(e)}"
+        )
+
+
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint for the data service.
+    
+    This endpoint verifies that the service is healthy and can connect
+    to the database. It also provides information about rate limiting
+    configuration.
+    
+    Returns:
+        dict: Health status information
+        
+    Raises:
+        HTTPException: 503 if service is unhealthy
+    """
+    try:
+        # Test database connection
+        client = await get_supabase_client()
+        
+        # Test connection by querying a simple table
+        today_table = get_daily_table_name("flash_point")
+        result = client.table(today_table).select("id", count="exact").limit(1).execute()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.utcnow().isoformat(),
+            "rate_limit": {
+                "requests_per_minute": RATE_LIMIT_REQUESTS,
+                "window_seconds": RATE_LIMIT_WINDOW
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Service unhealthy: {str(e)}"
+        )
