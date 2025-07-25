@@ -23,6 +23,8 @@ import json
 import asyncpg
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
+import psycopg2
+from contextlib import closing
 
 from ..core.utils import measure_execution_time
 from ..config.logging_config import get_service_logger
@@ -64,7 +66,7 @@ class FlashpointDatabaseService:
         self.settings = get_settings()
         self.logger = get_service_logger("FlashpointDatabaseService")
         self.client: Optional[Client] = None # Supabase client
-        self.pool: Optional[asyncpg.Pool] = None # asyncpg pool
+        self.pool: Optional[asyncpg.Pool] = None # asyncpg pool        
         self._connection_params = {}
         self._initialize_connection()
         
@@ -200,14 +202,67 @@ class FlashpointDatabaseService:
                     self.logger.info(f"✅ Table ensured: {table_name}")
 
             except Exception as e:
-                self.logger.error(f"❌ Failed to ensure table {table_name}: {e}")
+                self.logger.error(f"Failed to ensure table {table_name}: {e}")
                 raise DatabaseException(f"Table creation failed: {str(e)}")
 
-    async def ensure_feed_table_exists(self, feed_table: str, flashpoint_table: str):
+
+    def ensure_feed_table_exists(self, feed_table: str, flashpoint_table: str):
+        conn_str = self._connection_params["database_url"]
+        
+        create_table_query = f"""
+        CREATE TABLE IF NOT EXISTS {feed_table} (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            flashpoint_id UUID,
+            url TEXT,
+            title TEXT,
+            seendate TEXT,
+            domain TEXT,
+            language TEXT,
+            sourcecountry TEXT,
+            description TEXT,
+            image TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """
+
+        create_index_query = f"""
+        CREATE INDEX IF NOT EXISTS idx_{feed_table}_flashpoint_id ON {feed_table}(flashpoint_id);
+        """
+
+        alter_fk_if_needed_query = f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.table_constraints
+                WHERE constraint_type = 'FOREIGN KEY'
+                AND table_name = '{feed_table}'
+                AND constraint_name = 'fk_flashpoint'
+            ) THEN
+                ALTER TABLE {feed_table}
+                ADD CONSTRAINT fk_flashpoint
+                FOREIGN KEY (flashpoint_id)
+                REFERENCES {flashpoint_table}(id)
+                ON DELETE CASCADE;
+            END IF;
+        END
+        $$;
+        """
+
+        with closing(psycopg2.connect(conn_str)) as conn:
+            with conn.cursor() as cur:
+                cur.execute(create_table_query)
+                cur.execute(create_index_query)
+                cur.execute(alter_fk_if_needed_query)
+            conn.commit()
+        
+        
+    async def ensure_feed_table_exists_async(self, feed_table: str, flashpoint_table: str):
         """
         Ensures the feed table for the given day exists. Also creates a foreign key index on flashpoint_id.
         """
-        with measure_execution_time(f"ensure_feed_table_exists: {feed_table}"):
+        with measure_execution_time(f"ensure_feed_table_exists_async: {feed_table}"):
             create_table_query = f"""
             CREATE TABLE IF NOT EXISTS {feed_table} (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -323,7 +378,10 @@ class FlashpointDatabaseService:
 
             feed_table = self.get_daily_table_name("feed_entries")
             flashpoint_table = self.get_daily_table_name("flash_point")
-            await self.ensure_feed_table_exists(feed_table, flashpoint_table)
+            await self.ensure_feed_table_exists_async(feed_table, flashpoint_table)
+            
+            # Run sync DDL
+            #self.ensure_feed_table_exists(feed_table, flashpoint_table)
 
             def batch_iterator(iterable, size):
                 it = iter(iterable)
@@ -349,11 +407,32 @@ class FlashpointDatabaseService:
                 data = {k: v for k, v in asdict(record).items() if v is not None}
                 payload.append(data)
 
+            # from asyncio import to_thread
+            # def insert_batch(feed_table, client, batch):
+            #     return client.table(feed_table).insert(batch).execute()
+            
             total_inserted = 0
+            # for batch in batch_iterator(payload, BATCH_SIZE):
+            #     result = await to_thread(insert_batch, feed_table, self.client, batch)
+            #     #result = await to_thread(lambda: insert_func().execute())
+            #     inserted = len(result.data or [])
+            #     total_inserted += inserted
+            
             for batch in batch_iterator(payload, BATCH_SIZE):
-                result = self.client.table(feed_table).insert(batch).execute()
-                inserted = len(result.data or [])
-                total_inserted += inserted
+                try:
+                    self.logger.info(f"Inserting batch of size: {len(batch)}")
+                    result = self.client.table(feed_table).insert(batch).execute()
+
+                    # Log errors clearly
+                    if not result.data:
+                        self.logger.warning(f"[Insert Warning] No data inserted into {feed_table}")
+                    else:
+                        inserted = len(result.data)
+                        total_inserted += inserted
+                        self.logger.info(f"[Insert Success] {inserted} entries added to {feed_table}")
+
+                except Exception as e:
+                    self.logger.exception(f"[Insert Exception] {e}")
 
             return total_inserted
 
