@@ -84,3 +84,12 @@ final_flashpoints.json
 README copy.md
 src/app/services/llm_service_1.py
 src/app/workflows/orchestrator copy.py
+src/flashpoints/flashpoint-2025-07-25-1.json
+src/flashpoints/flashpoint-2025-07-25-2.json
+src/flashpoints/flashpoint-2025-07-25-3.json
+src/flashpoints/flashpoint-2025-07-25-4.json
+src/flashpoints/flashpoint-2025-07-25-5.json
+src/flashpoints/flashpoint-2025-07-25-6.json
+src/flashpoints/flashpoint-2025-07-25-7.json
+src/app/debug_data/flashpoint_21_07_2025.json
+src/app/debug_data/flashpoint_25_07_2025.json
