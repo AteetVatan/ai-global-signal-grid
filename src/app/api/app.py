@@ -137,7 +137,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.enable_api_docs else None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
         lifespan=lifespan,
-        dependencies=[Depends(verify_api_key)] if settings.require_api_key else None,
+        #dependencies=[Depends(verify_api_key)] if settings.require_api_key else None,
     )
 
     # Add middleware
@@ -353,10 +353,10 @@ def _register_routes(app: FastAPI):
     #app.include_router(health.router, prefix="/health", tags=["Health"])
 
     # Workflow routes
-    app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
+    #app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
 
     # Data routes
-    #app.include_router(data.router, prefix="/data", tags=["Data"])
+    app.include_router(data.router, prefix="/data", tags=["Data"])
 
     # Service routes
     #app.include_router(services.router, prefix="/services", tags=["Services"])
