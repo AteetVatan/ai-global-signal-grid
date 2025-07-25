@@ -35,7 +35,7 @@ from tenacity import (
     stop_after_attempt,
     retry_if_exception_type,
 )
-from ..constants import ISO_REGION_LANGUAGES
+from ..constants import ISO_REGION_LANGUAGES, CountryV2Manager
 from ..core.singleton import ThreadSafeRateLimiter
 
 # Constants
@@ -53,34 +53,44 @@ class LanguageServiceError(Exception):
 
 class LanguageService:
     _language_cache: Dict[str, List[str]] = {}
+    _country_v2_manager = CountryV2Manager()
 
     @classmethod
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(6),
         retry=retry_if_exception_type(requests.RequestException),
-        reraise=True,  # <- optional: raise last exception after retries
+        reraise=True,
     )
     def get_languages_for_country_code(cls, country_code: str) -> List[str]:
         """
         Fetches official ISO-639-1 language codes for a given country code.
-
-        Args:
-            country_code: ISO-3166 alpha-2 country code (e.g., "US", "DE")
+        Tries both local COUNTRY_V2 manager and remote RestCountries API.
 
         Returns:
-            List of ISO 639-1 language codes
+            List of unique ISO-639-1 codes like ['en', 'de']
         """
         code = country_code.strip().upper()
+        lang_set = set()
 
         # Check cache
         if code in cls._language_cache:
             return cls._language_cache[code]
 
+        # Validate
         if not _ALPHA2_PATTERN.match(code):
             raise LanguageServiceError(f"Invalid country code: '{code}'")
 
-        # Rate limit before request
+        # --------- Local lookup from COUNTRY_V2 ----------
+        try:
+            local_country = cls._country_v2_manager.get_country(code)
+            if local_country:
+                lang_set.update(local_country.get_language_codes_iso6391())
+        except Exception as e:
+            # Do not raise; just log if needed
+            print(f"[Local fallback failed] {code}: {e}")
+
+        # --------- Remote API fallback -----------
         rate_limiter = ThreadSafeRateLimiter.get_instance(max_calls_per_sec=1)
         rate_limiter.acquire()
 
@@ -91,24 +101,24 @@ class LanguageService:
                 headers={"User-Agent": "MASX-AI/1.0"},
             )
             response.raise_for_status()
+            remote_data = response.json()[0]
+            lang_tags = remote_data.get("languages", {})
 
-            country_data = response.json()[0]
-            languages = country_data.get("languages", {})
-
-            iso6391 = []
-            for lang_tag in languages.keys():
+            for lang_tag in lang_tags.keys():
                 lang = pycountry.languages.get(alpha_3=lang_tag)
                 if lang and hasattr(lang, "alpha_2"):
-                    iso6391.append(lang.alpha_2)
-
-            result = sorted(set(iso6391)) or ["en"]
-            cls._language_cache[code] = result
-            return result
+                    lang_set.add(lang.alpha_2)
 
         except requests.RequestException as re:
-            raise LanguageServiceError(f"Network error for {code}: {re}")
+            print(f"[Remote API Error] {code}: {re}")
         except (ValueError, KeyError, IndexError) as e:
-            raise LanguageServiceError(f"Unexpected response for {code}: {e}")
+            print(f"[Remote JSON Error] {code}: {e}")
+
+        # --------- Final Result ---------
+        result = sorted(lang_set) or ["en"]  # fallback to English if empty
+        cls._language_cache[code] = result
+        return result        
+        
 
     @classmethod
     def get_languages_for_entity(cls, entity: str) -> List[str]:
