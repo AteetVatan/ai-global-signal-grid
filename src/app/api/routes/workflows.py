@@ -127,21 +127,22 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
     Execute the daily workflow as a completely detached background thread.
     """
     try:
-
-        def _run_in_background():
+        def _run_in_background(req_data: Optional[Dict]):
             try:
+                async def runner():
+                    orchestrator = MASXOrchestrator()
+                    orchestrator.run_daily_workflow(input_data=req_data)
+
+                # ✅ Manually set event loop in thread
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-
-                orchestrator = MASXOrchestrator()
-                input_data = request.input_data if request else None
-
-                loop.run_until_complete(orchestrator.run_daily_workflow(input_data=input_data))
+                loop.run_until_complete(runner())
+                loop.close()
             except Exception as e:
                 logger.error(f"[MASX] Background workflow failed: {e}", exc_info=True)
 
-        # Fire-and-forget
-        threading.Thread(target=_run_in_background, daemon=True).start()
+        input_data = request.input_data if request else None
+        threading.Thread(target=_run_in_background, args=(input_data,), daemon=True).start()
 
         return WorkflowResponse(
             workflow_id="",
@@ -154,6 +155,7 @@ async def execute_daily_workflow(request: Optional[WorkflowRequest] = None):
     except Exception as e:
         logger.error(f"Daily workflow execution failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Daily workflow execution failed: {str(e)}")
+
 
 
 # @router.post("/execute/detection")
