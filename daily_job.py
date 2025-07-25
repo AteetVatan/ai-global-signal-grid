@@ -43,11 +43,20 @@ def run_gsg_workflow():
 
     try:
         MASXOrchestrator().run_daily_workflow({})
-        logging.info("✅ MASX GSG workflow completed successfully")
+        logging.info("MASX GSG workflow completed successfully")
     except Exception as e:
         logging.error(f"MASX GSG workflow failed: {e}", exc_info=True)
         print(f"[FATAL] Exception during workflow: {e}")
 
+        # Retry the workflow after 5 minutes
+        time.sleep(300)
+        #retry once in case of error
+        try:
+            MASXOrchestrator().run_daily_workflow({})
+            logging.info("MASX GSG workflow completed successfully")
+        except Exception as retry_error:
+            logging.error(f"MASX GSG workflow failed: {retry_error}", exc_info=True)
+            print(f"[FATAL] Exception during workflow: {retry_error}")
 
 def graceful_shutdown(signum, frame):
     logging.info("Shutdown signal received. Stopping scheduler.")
