@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # FastAPI Server Only
+  masx-fastapi:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_TYPE=fastapi
+      - PYTHONPATH=/app/src
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Daily Job Scheduler Only
+  masx-scheduler:
+    build: .
+    environment:
+      - SERVICE_TYPE=scheduler
+      - PYTHONPATH=/app/src
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./jobs.db:/app/jobs.db
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  # Both Services (FastAPI + Scheduler)
+  masx-full:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_TYPE=both
+      - PYTHONPATH=/app/src
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./jobs.db:/app/jobs.db
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development setup with hot reload
+  masx-dev:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_TYPE=fastapi
+      - PYTHONPATH=/app/src
+      - API_RELOAD=true
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./jobs.db:/app/jobs.db
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: masx-network

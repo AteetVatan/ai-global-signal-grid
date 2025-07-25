@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     libpq-dev \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -33,6 +34,7 @@ RUN python -m spacy download en_core_web_sm
 
 # Copy application code
 COPY src/ ./src/
+COPY *.py ./
 COPY pyproject.toml .
 COPY env.example .
 
@@ -47,9 +49,13 @@ USER masx
 # Set Python path
 ENV PYTHONPATH=/app/src
 
-# Health check
+# Create startup scripts
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Health check for FastAPI
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command
-CMD ["python", "-m", "app.api.main"] 
+# Default command (can be overridden)
+ENTRYPOINT ["docker-entrypoint.sh"] 
