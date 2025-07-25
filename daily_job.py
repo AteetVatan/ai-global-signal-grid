@@ -60,16 +60,16 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler(jobstores=jobstores, timezone="UTC")
 
     # Daily cron job: UTC midnight
-    # scheduler.add_job(
-    #     run_gsg_workflow,
-    #     trigger='cron',
-    #     hour=0,
-    #     minute=0,
-    #     id='masx_gsg_daily',
-    #     replace_existing=True
-    # )
+    scheduler.add_job(
+        run_gsg_workflow,
+        trigger='cron',
+        hour=0,
+        minute=0,
+        id='masx_gsg_daily',
+        replace_existing=True
+    )
 
-    # One-time test job one minute from now
+    # One-time test job five minute from now
     scheduler.add_job(
         run_gsg_workflow,
         trigger="date",
