@@ -94,7 +94,9 @@ class FlashpointLLMAgent(BaseAgent):
         self.llm_service = LLMService.get_instance()  # singleton
         self.web_search = WebSearchService()
         self.flashpoint_service = FlashpointDetectionService()
-        self.token_tracker = get_token_tracker(provider="mistral", model="mistral-small-2407")
+        self.token_tracker = get_token_tracker(
+            provider="mistral", model="mistral-small-2407"
+        )
         self.country_normalizer = CountryNormalizer()
         # Get entity tracker
         self.entity_tracker = self.flashpoint_service.get_entity_tracker()
@@ -437,10 +439,10 @@ class FlashpointLLMAgent(BaseAgent):
                 self.logger.warning(
                     f"[Attempt {attempt}/{max_attempts}] JSON validation failed",
                     error=str(e),
-                    response_preview=response[:200]
+                    response_preview=response[:200],
                 )
                 if attempt == max_attempts:
-                    return None  #Final failure
+                    return None  # Final failure
 
     def _process_flashpoints(
         self,

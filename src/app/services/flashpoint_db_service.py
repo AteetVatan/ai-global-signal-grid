@@ -36,6 +36,7 @@ from itertools import islice
 # from your_project.database import supabase_client, pg_pool
 BATCH_SIZE = 100
 
+
 @dataclass
 class FlashpointRecord:
     title: str
@@ -58,19 +59,17 @@ class FeedRecord:
     sourcecountry: Optional[str] = None
     description: Optional[str] = None
     image: Optional[str] = None
-    
 
 
 class FlashpointDatabaseService:
     def __init__(self):
         self.settings = get_settings()
         self.logger = get_service_logger("FlashpointDatabaseService")
-        self.client: Optional[Client] = None # Supabase client
-        self.pool: Optional[asyncpg.Pool] = None # asyncpg pool        
+        self.client: Optional[Client] = None  # Supabase client
+        self.pool: Optional[asyncpg.Pool] = None  # asyncpg pool
         self._connection_params = {}
         self._initialize_connection()
-        
-        
+
     def _initialize_connection(self):
         """Initialize database connection parameters."""
         try:
@@ -101,9 +100,8 @@ class FlashpointDatabaseService:
 
         except Exception as e:
             self.logger.error(f"Failed to initialize database connection: {e}")
-            raise DatabaseException(f"Database initialization failed: {str(e)}")   
-    
-        
+            raise DatabaseException(f"Database initialization failed: {str(e)}")
+
     async def connect(self):
         """Establish database connections."""
         try:
@@ -164,9 +162,6 @@ class FlashpointDatabaseService:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.disconnect()
-        
-    
-           
 
     def get_daily_table_name(self, base: str, date: Optional[datetime] = None) -> str:
         date = date or datetime.utcnow()
@@ -205,10 +200,9 @@ class FlashpointDatabaseService:
                 self.logger.error(f"Failed to ensure table {table_name}: {e}")
                 raise DatabaseException(f"Table creation failed: {str(e)}")
 
-
     def ensure_feed_table_exists(self, feed_table: str, flashpoint_table: str):
         conn_str = self._connection_params["database_url"]
-        
+
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {feed_table} (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -256,9 +250,10 @@ class FlashpointDatabaseService:
                 cur.execute(create_index_query)
                 cur.execute(alter_fk_if_needed_query)
             conn.commit()
-        
-        
-    async def ensure_feed_table_exists_async(self, feed_table: str, flashpoint_table: str):
+
+    async def ensure_feed_table_exists_async(
+        self, feed_table: str, flashpoint_table: str
+    ):
         """
         Ensures the feed table for the given day exists. Also creates a foreign key index on flashpoint_id.
         """
@@ -311,7 +306,6 @@ class FlashpointDatabaseService:
                 await conn.execute(alter_fk_if_needed_query)
 
             self.logger.info(f"Feed table ensured: {feed_table}")
-            
 
     async def store_flashpoint(self, fp: FlashpointRecord, run_id: str) -> str:
         """
@@ -347,20 +341,23 @@ class FlashpointDatabaseService:
                 )
                 data = {k: v for k, v in asdict(record).items() if v is not None}
 
-
-                 # Fix types: Supabase often needs JSON-safe formats
+                # Fix types: Supabase often needs JSON-safe formats
                 if isinstance(data["entities"], list):
                     data["entities"] = json.dumps(data["entities"])
                 if isinstance(data["domains"], list):
                     data["domains"] = json.dumps(data["domains"])
-                    
-                self.logger.debug(f"[store_flashpoint] Payload for {table_name}: {json.dumps(data, indent=2)}")
-      # Step 4: Insert using Supabase client
+
+                self.logger.debug(
+                    f"[store_flashpoint] Payload for {table_name}: {json.dumps(data, indent=2)}"
+                )
+                # Step 4: Insert using Supabase client
                 result = self.client.table(table_name).insert(data).execute()
 
                 if result.data:
                     flashpoint_id = result.data[0].get("id")
-                    self.logger.info(f"[store_flashpoint] Stored in {table_name} → ID: {flashpoint_id}")
+                    self.logger.info(
+                        f"[store_flashpoint] Stored in {table_name} → ID: {flashpoint_id}"
+                    )
                     return flashpoint_id or "unknown_id"
                 else:
                     self.logger.error(f"[store_flashpoint] No data returned: {result}")
@@ -369,7 +366,6 @@ class FlashpointDatabaseService:
             except Exception as e:
                 self.logger.error(f"store_flashpoint() failed: {e}")
                 raise DatabaseException(f"store_flashpoint failed: {str(e)}")
-            
 
     async def store_feed_entries(self, flashpoint_id: str, feeds: List) -> int:
         try:
@@ -379,9 +375,9 @@ class FlashpointDatabaseService:
             feed_table = self.get_daily_table_name("feed_entries")
             flashpoint_table = self.get_daily_table_name("flash_point")
             await self.ensure_feed_table_exists_async(feed_table, flashpoint_table)
-            
+
             # Run sync DDL
-            #self.ensure_feed_table_exists(feed_table, flashpoint_table)
+            # self.ensure_feed_table_exists(feed_table, flashpoint_table)
 
             def batch_iterator(iterable, size):
                 it = iter(iterable)
@@ -410,14 +406,14 @@ class FlashpointDatabaseService:
             # from asyncio import to_thread
             # def insert_batch(feed_table, client, batch):
             #     return client.table(feed_table).insert(batch).execute()
-            
+
             total_inserted = 0
             # for batch in batch_iterator(payload, BATCH_SIZE):
             #     result = await to_thread(insert_batch, feed_table, self.client, batch)
             #     #result = await to_thread(lambda: insert_func().execute())
             #     inserted = len(result.data or [])
             #     total_inserted += inserted
-            
+
             for batch in batch_iterator(payload, BATCH_SIZE):
                 try:
                     self.logger.info(f"Inserting batch of size: {len(batch)}")
@@ -425,11 +421,15 @@ class FlashpointDatabaseService:
 
                     # Log errors clearly
                     if not result.data:
-                        self.logger.warning(f"[Insert Warning] No data inserted into {feed_table}")
+                        self.logger.warning(
+                            f"[Insert Warning] No data inserted into {feed_table}"
+                        )
                     else:
                         inserted = len(result.data)
                         total_inserted += inserted
-                        self.logger.info(f"[Insert Success] {inserted} entries added to {feed_table}")
+                        self.logger.info(
+                            f"[Insert Success] {inserted} entries added to {feed_table}"
+                        )
 
                 except Exception as e:
                     self.logger.exception(f"[Insert Exception] {e}")
@@ -439,7 +439,7 @@ class FlashpointDatabaseService:
         except Exception as e:
             self.logger.error(f"store_feed_entries() failed: {e}")
             raise DatabaseException(str(e))
-        
+
     async def drop_daily_tables(self, date: Optional[datetime] = None) -> None:
         """
         Drops the daily flashpoint and feed tables for the given date if they exist.

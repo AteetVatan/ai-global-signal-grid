@@ -21,6 +21,7 @@
 import threading
 from .flashpoint import FlashpointDataset, FlashpointItem
 
+
 class FlashpointStore:
     _instance = None
     _lock = threading.Lock()
@@ -42,5 +43,6 @@ class FlashpointStore:
 
     def get_items(self) -> FlashpointDataset:
         return self.dataset
+
 
 flashpoint_store = FlashpointStore()

@@ -117,8 +117,7 @@ class LanguageService:
         # --------- Final Result ---------
         result = sorted(lang_set) or ["en"]  # fallback to English if empty
         cls._language_cache[code] = result
-        return result        
-        
+        return result
 
     @classmethod
     def get_languages_for_entity(cls, entity: str) -> List[str]:
@@ -142,7 +141,7 @@ class LanguageService:
         # Try resolving via country code
         try:
             country = pycountry.countries.search_fuzzy(entity_title)[0]
-            if country and hasattr(country, 'alpha_2'):
+            if country and hasattr(country, "alpha_2"):
                 from_country = cls.get_languages_for_country_code(country.alpha_2)
                 languages.extend(from_country)
         except LookupError:

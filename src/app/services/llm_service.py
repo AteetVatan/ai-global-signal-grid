@@ -56,9 +56,9 @@ class LLMService:
     - Token counting and cost tracking
     - Structured output generation
     """
-    
+
     _instance = None
-    
+
     @classmethod
     def get_instance(cls, provider: Optional[str] = None):
         if cls._instance is None:
@@ -96,7 +96,7 @@ class LLMService:
 
         # Throttling for mistral
         self._throttler = None
-        #self._throttler = Throttler(rate_limit=4, period=60) if self.provider == "mistral" else None
+        # self._throttler = Throttler(rate_limit=4, period=60) if self.provider == "mistral" else None
 
     def _init_provider(self):
         """Initialize the selected LLM provider."""
@@ -158,9 +158,11 @@ class LLMService:
                     user_prompt, system_prompt, temperature, max_tokens, **kwargs
                 )
             elif self.provider == "mistral":
-                return asyncio.run(self._generate_mistral_async(
-                    user_prompt, system_prompt, temperature, max_tokens, **kwargs
-                ))
+                return asyncio.run(
+                    self._generate_mistral_async(
+                        user_prompt, system_prompt, temperature, max_tokens, **kwargs
+                    )
+                )
             else:
                 raise ConfigurationException(f"Unsupported provider: {self.provider}")
 
@@ -236,24 +238,33 @@ class LLMService:
             for attempt in range(3):
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.post(url, headers=headers, json=payload) as resp:
+                        async with session.post(
+                            url, headers=headers, json=payload
+                        ) as resp:
                             if resp.status == 429:
-                                await asyncio.sleep(2 ** attempt)
+                                await asyncio.sleep(2**attempt)
                                 continue
                             resp.raise_for_status()
                             data = await resp.json()
                             content = data["choices"][0]["message"]["content"]
-                            estimated_tokens = len(user_prompt.split()) + len(content.split())
-                            self._track_usage(estimated_tokens // 2, estimated_tokens // 2)
+                            estimated_tokens = len(user_prompt.split()) + len(
+                                content.split()
+                            )
+                            self._track_usage(
+                                estimated_tokens // 2, estimated_tokens // 2
+                            )
                             return content
                 except Exception as e:
-                    self.logger.error(f"*****Mistral async call failed attempt {attempt}: {str(e)}", exc_info=True)
+                    self.logger.error(
+                        f"*****Mistral async call failed attempt {attempt}: {str(e)}",
+                        exc_info=True,
+                    )
                     if attempt == 2:
                         raise ExternalServiceException(
                             f"Mistral async call failed: {str(e)}",
                             context={"provider": "mistral"},
                         )
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
 
     def generate_structured_output(
         self,

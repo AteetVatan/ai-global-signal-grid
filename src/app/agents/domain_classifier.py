@@ -36,6 +36,7 @@ from ..services.llm_service import LLMService
 from ..core.exceptions import AgentException
 from ..constants import DOMAIN_CATEGORIES
 
+
 class DomainClassifier(BaseAgent):
     """
     Agent for classifying content into geopolitical domains.
@@ -44,7 +45,7 @@ class DomainClassifier(BaseAgent):
     - Geopolitical, Military/Conflict, Economic/Trade, Cultural/Identity
     - Religious/Ideological, Technological, Cybersecurity, Environmental
     - Civilizational/Ethnonationalist, AI Governance, Migration, Sovereignty
-    """   
+    """
 
     def __init__(self):
         """Initialize the Domain Classifier agent."""
@@ -79,7 +80,6 @@ class DomainClassifier(BaseAgent):
                 system_prompt="You are a geopolitical taxonomy expert.",
                 temperature=0.0,  # Deterministic classification
             )
-            
 
             # Parse domains from response
             domains = self._parse_domains(response)

@@ -37,10 +37,12 @@ class Settings(BaseSettings):
     Type validation and defaults are handled automatically.
     """
 
-    #GSG_API_KEY
+    # GSG_API_KEY
     gsg_api_key: Optional[str] = Field(default=None, description="GSG API key")
-    require_api_key: bool = Field(default=False, description="Require API key for all endpoints")
-    
+    require_api_key: bool = Field(
+        default=False, description="Require API key for all endpoints"
+    )
+
     # Pydantic Settings to load .env file
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
@@ -125,7 +127,7 @@ class Settings(BaseSettings):
     GDELT_API_URL: Optional[str] = Field(
         default=None, description="MASX AI GDELT API URL"
     )
-    
+
     google_translate_api_key: Optional[str] = Field(
         default=None, description="Google Translate API key"
     )

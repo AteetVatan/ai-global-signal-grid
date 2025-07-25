@@ -144,10 +144,14 @@ class TranslationService:
                 src_nllb = ISO_TO_NLLB_MERGED[src]
                 tgt_nllb = ISO_TO_NLLB_MERGED[tgt]
                 hf_model_used = True
-                return hf_model_used , self.nllb_translator.translate(text, src_nllb, tgt_nllb)
+                return hf_model_used, self.nllb_translator.translate(
+                    text, src_nllb, tgt_nllb
+                )
 
             # Google Fallback
-            return hf_model_used, GoogleTranslator(source=src, target=tgt).translate(text)
+            return hf_model_used, GoogleTranslator(source=src, target=tgt).translate(
+                text
+            )
 
         except Exception as e:
             self.logger.error(f"Translation failed: {e}", exc_info=True)

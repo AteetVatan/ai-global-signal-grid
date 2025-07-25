@@ -24,7 +24,6 @@ from .helpers import load_json
 from .errors import raise_response_error
 
 
-
 class GdeltDoc:
     """
     API client for the GDELT 2.0 Doc API
@@ -173,7 +172,7 @@ class GdeltDoc:
         headers = {
             "User-Agent": f"GDELT DOC Python API client- https://github.com/AteetVatan"
         }
-        
+
         url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query_string}&mode={mode}&format=json"
 
         response = requests.get(

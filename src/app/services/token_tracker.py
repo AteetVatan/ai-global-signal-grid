@@ -93,9 +93,9 @@ class TokenCostTracker:
 
     def _init_tokenizer(self):
         """Initialize the appropriate tokenizer for the model."""
-        
-        #todo: remove this
-        #for now use only openai            
+
+        # todo: remove this
+        # for now use only openai
         self.provider = "openai"
         if self.provider == "openai":
             try:
@@ -326,7 +326,8 @@ class TokenCostTracker:
 # Global instance for easy access across the application
 _global_tracker: Optional[TokenCostTracker] = None
 
-#get_token_tracker(provider="mistral", model="mistral-small-2407")
+
+# get_token_tracker(provider="mistral", model="mistral-small-2407")
 def get_token_tracker(
     provider: str = "mistral", model: str = "gpt-4-turbo"
 ) -> TokenCostTracker:

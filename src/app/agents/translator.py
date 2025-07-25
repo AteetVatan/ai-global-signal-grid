@@ -81,8 +81,10 @@ class Translator(BaseAgent):
                         if lang == "en" or lang == "uk":
                             translated_text = query.query
                         else:
-                            hf_model_used, translated_text = self.translation_service.translate(
-                                target_lang=lang, source_lang="en", text=query.query
+                            hf_model_used, translated_text = (
+                                self.translation_service.translate(
+                                    target_lang=lang, source_lang="en", text=query.query
+                                )
                             )
                             self.logger.info(
                                 f"Translated query: {query.query} to {lang} with text: {translated_text}"

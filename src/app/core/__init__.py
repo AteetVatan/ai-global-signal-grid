@@ -39,7 +39,7 @@ from .utils import (
     sanitize_text,
     validate_url,
     retry_with_backoff,
-    measure_execution_time, 
+    measure_execution_time,
 )
 from .date_utils import DateUtils
 

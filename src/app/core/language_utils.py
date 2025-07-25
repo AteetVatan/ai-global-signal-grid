@@ -28,19 +28,19 @@ class LanguageUtils:
             return pycountry.languages.get(alpha_2=code.lower()) is not None
         except Exception:
             return False
-        
-   # get language code from language name
+
+    # get language code from language name
     @staticmethod
     def get_language_code(language_name: str) -> str:
         try:
             # Exact match
             lang = pycountry.languages.get(name=language_name)
-            if lang and hasattr(lang, 'alpha_2'):
+            if lang and hasattr(lang, "alpha_2"):
                 return lang.alpha_2
 
             # Fuzzy fallback
             matches = pycountry.languages.search_fuzzy(language_name)
-            if matches and hasattr(matches[0], 'alpha_2'):
+            if matches and hasattr(matches[0], "alpha_2"):
                 return matches[0].alpha_2
         except LookupError:
             return None

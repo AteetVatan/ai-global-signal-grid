@@ -82,6 +82,7 @@ ONE_WAY_COUNTRY_VARIATIONS = {
     "slovak republic": "Slovakia",
 }
 
+
 def build_bidirectional_map(original_map: dict) -> dict:
     bidirectional = {}
 
@@ -98,5 +99,6 @@ def build_bidirectional_map(original_map: dict) -> dict:
             bidirectional[v_l] = k_l
 
     return bidirectional
+
 
 COUNTRY_VARIATIONS = build_bidirectional_map(ONE_WAY_COUNTRY_VARIATIONS)

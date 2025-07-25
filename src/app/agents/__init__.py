@@ -43,7 +43,7 @@ from .logging_auditor import LoggingAuditor
 from .flashpoint_llm_agent import FlashpointLLMAgent
 from .flashpoint_validator_agent import FlashpointValidatorAgent
 from .google_rss_agent import GoogleRssFeederAgent
-from .gdelt_fetcher_agent import GdeltFetcherAgent  
+from .gdelt_fetcher_agent import GdeltFetcherAgent
 
 __all__ = [
     "BaseAgent",

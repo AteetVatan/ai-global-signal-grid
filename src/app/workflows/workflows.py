@@ -447,7 +447,9 @@ def _finalize_workflow(state: MASXState) -> MASXState:
             run_id=state.workflow_id[0],
         )
     else:
-        logger.info("Daily workflow completed successfully", run_id=state.workflow_id[0])
+        logger.info(
+            "Daily workflow completed successfully", run_id=state.workflow_id[0]
+        )
 
     return state
 

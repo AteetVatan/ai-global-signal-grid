@@ -31,7 +31,9 @@ from datetime import datetime
 import operator
 from pydantic import BaseModel, Field
 from .flashpoint import FlashpointDataset, FlashpointItem
-#from app.core.flashpoint import FlashpointDataset, FlashpointItem
+
+# from app.core.flashpoint import FlashpointDataset, FlashpointItem
+
 
 class AgentState(BaseModel):
     """
@@ -78,6 +80,7 @@ class WorkflowState(BaseModel):
         default=None, description="Final results of the workflow"
     )
 
+
 class MASXState1(BaseModel):
     """
     Top-level state for a workflow run.
@@ -86,13 +89,13 @@ class MASXState1(BaseModel):
 
     workflow_id: Annotated[List[str], operator.add] = Field(default_factory=list)
     timestamp: Annotated[List[datetime], operator.add] = Field(default_factory=list)
-    
+
     # put current_flashpoint and all_flashpoints in data
     data: Dict[str, Any] = Field(
         default_factory=dict,
         description="Data for the workflow",  # current_flashpoint and all_flashpoints
     )
-    
+
     agents: Dict[str, AgentState] = Field(
         default_factory=dict, description="States for each agent by name"
     )
@@ -105,13 +108,14 @@ class MASXState1(BaseModel):
     )
 
 
-
 # Custom merge functions
 def merge_dicts(a: dict, b: dict) -> dict:
     return {**a, **b}
 
+
 def merge_errors(a: list, b: list) -> list:
     return a + b
+
 
 class MASXState(BaseModel):
     workflow_id: Annotated[List[str], operator.add] = Field(default_factory=list)

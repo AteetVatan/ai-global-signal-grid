@@ -22,7 +22,7 @@ Flashpoint LLM Agent Validator for Global Signal Grid (MASX) Agentic AI System.
 Checks if the flashpoint belongs to the accepted strategic domains.
 
 Usage: from app.agents.flashpoint_validator_agent import FlashpointValidatorAgent
-    agent = FlashpointValidatorAgent() 
+    agent = FlashpointValidatorAgent()
 """
 
 # flashpoint_validator_agent.py
@@ -47,7 +47,7 @@ class FlashpointValidationResponse(BaseModel):
     @classmethod
     def validate_decision(cls, value: str) -> bool:
         return value.strip().lower() in {"yes", "no"}
-    
+
 
 class FlashpointValidatorAgent(BaseAgent):
     """
@@ -61,7 +61,7 @@ class FlashpointValidatorAgent(BaseAgent):
             description="Validates flashpoints using domain keywords + LLM classification",
         )
         self.logger = get_logger(__name__)
-        self.llm_service = LLMService.get_instance() # singleton
+        self.llm_service = LLMService.get_instance()  # singleton
         self.keywords = self._extract_keywords(DOMAIN_CATEGORIES)
 
     def _extract_keywords(self, domains: List[str]) -> List[str]:
@@ -76,8 +76,8 @@ class FlashpointValidatorAgent(BaseAgent):
         return (
             "You are a geopolitical domain classifier.\n"
             "Your task is to classify a flashpoint as either 'yes' or 'no' based on the following domains:\n\n"
-            + "\n".join(f"- {domain}" for domain in DOMAIN_CATEGORIES) +
-            "\n\nOnly respond in **valid JSON** format like this:\n"
+            + "\n".join(f"- {domain}" for domain in DOMAIN_CATEGORIES)
+            + "\n\nOnly respond in **valid JSON** format like this:\n"
             '{ "decision": "yes" }\n'
             "or\n"
             '{ "decision": "no" }\n\n'
@@ -98,18 +98,24 @@ class FlashpointValidatorAgent(BaseAgent):
             flashpoints: FlashpointDataset = input_data["flashpoints"]
             valid_flashpoints, unrelated = [], []
 
-            for fp in flashpoints:              
+            for fp in flashpoints:
                 # LLM validation (temp = 0)
                 prompt = self._build_user_prompt(fp)
-                llm_output = self.llm_service.generate_text(
-                    user_prompt=prompt,
-                    system_prompt=self.SYSTEM_PROMPT,
-                    temperature=0.0,
-                    max_tokens=100,
-                ).strip().lower()
+                llm_output = (
+                    self.llm_service.generate_text(
+                        user_prompt=prompt,
+                        system_prompt=self.SYSTEM_PROMPT,
+                        temperature=0.0,
+                        max_tokens=100,
+                    )
+                    .strip()
+                    .lower()
+                )
 
                 try:
-                    parsed = FlashpointValidationResponse.model_validate(safe_json_loads(llm_output))
+                    parsed = FlashpointValidationResponse.model_validate(
+                        safe_json_loads(llm_output)
+                    )
                     decision = parsed.decision.lower()
                 except (ValidationError, ValueError) as ve:
                     self.logger.warning(f"Invalid LLM output: {llm_output}")
@@ -124,9 +130,14 @@ class FlashpointValidatorAgent(BaseAgent):
             return AgentResult(
                 success=True,
                 data={"flashpoints": valid_flashpoints, "unrelated": unrelated},
-                metadata={"valid_count": len(valid_flashpoints), "unrelated_count": len(unrelated)},
+                metadata={
+                    "valid_count": len(valid_flashpoints),
+                    "unrelated_count": len(unrelated),
+                },
             )
 
         except Exception as e:
-            self.logger.error("FlashpointValidatorAgent failed", error=str(e), exc_info=True)
+            self.logger.error(
+                "FlashpointValidatorAgent failed", error=str(e), exc_info=True
+            )
             return AgentResult(success=False, data={}, error=str(e))

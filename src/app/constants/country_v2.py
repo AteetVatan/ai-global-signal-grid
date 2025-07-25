@@ -144,10 +144,10 @@ class CountryV2:
     def get_language_codes_iso6391(self) -> List[str]:
         """Returns all ISO-639-1 language codes (e.g., ['ps', 'uz'])"""
         return [l.get("iso639_1") for l in self.languages if "iso639_1" in l]
-    
+
     def get_language_codes_iso6392(self) -> List[str]:
         """Returns all ISO-639-2 language codes (e.g., ['ps', 'uz'])"""
-        return [l.get("iso639_2") for l in self.languages if "iso639_2" in l]  
+        return [l.get("iso639_2") for l in self.languages if "iso639_2" in l]
 
     def get_primary_language_code(self) -> Optional[str]:
         return self.get_language_codes()[0] if self.get_language_codes() else None
@@ -164,10 +164,9 @@ class CountryV2:
         return self._data.copy()
 
 
-
 class CountryV2Manager:
     _filepath = "src/app/constants/countriesV2.json"
-    
+
     def __init__(self):
         self._filepath = self._filepath
         self._countries: Dict[str, CountryV2] = {}
@@ -197,13 +196,3 @@ class CountryV2Manager:
 
     def reload(self):
         self._load_countries()
-
-    
- 
-
-
-
-
-
-
-

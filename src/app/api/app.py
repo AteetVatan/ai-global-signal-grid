@@ -54,42 +54,39 @@ from .routes import health, workflows, data, services
 async def verify_api_key(request: Request):
     """
     Verify API key from request headers.
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         bool: True if API key is valid
-        
+
     Raises:
         HTTPException: If API key is missing or invalid
     """
     settings = get_settings()
-    
+
     # Skip verification if not required
     if not settings.require_api_key:
         return True
-    
+
     # Get API key from headers
     api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
-    
+
     if not api_key:
         raise HTTPException(
             status_code=401,
-            detail="API key required. Please provide X-API-Key or Authorization header"
+            detail="API key required. Please provide X-API-Key or Authorization header",
         )
-    
+
     # Remove 'Bearer ' prefix if present
     if api_key.startswith("Bearer "):
         api_key = api_key[7:]
-    
+
     # Verify against configured API key
     if api_key != settings.gsg_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-    
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
     return True
 
 
@@ -137,7 +134,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.enable_api_docs else None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
         lifespan=lifespan,
-        #dependencies=[Depends(verify_api_key)] if settings.require_api_key else None,
+        # dependencies=[Depends(verify_api_key)] if settings.require_api_key else None,
     )
 
     # Add middleware
@@ -350,16 +347,16 @@ def _add_logging_middleware(app: FastAPI):
 def _register_routes(app: FastAPI):
     """Register API routes."""
     # Health check routes
-    #app.include_router(health.router, prefix="/health", tags=["Health"])
+    # app.include_router(health.router, prefix="/health", tags=["Health"])
 
     # Workflow routes
-    #app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
+    # app.include_router(workflows.router, prefix="/workflows", tags=["Workflows"])
 
     # Data routes
     app.include_router(data.router, prefix="/data", tags=["Data"])
 
     # Service routes
-    #app.include_router(services.router, prefix="/services", tags=["Services"])
+    # app.include_router(services.router, prefix="/services", tags=["Services"])
 
     # Root endpoint
     @app.get("/", tags=["Root"])

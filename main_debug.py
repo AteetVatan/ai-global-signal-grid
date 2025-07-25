@@ -50,7 +50,7 @@ def main():
         print("[DEBUG] Starting orchestrator.run_daily_workflow()...")
         final_state: MASXState = orchestrator.run_daily_workflow(input_data)
         print("[DEBUG] Workflow completed.")
-        print("\n===== FINAL STATE =====")       
+        print("\n===== FINAL STATE =====")
     except Exception as e:
         print(f"[FATAL] Exception during workflow: {e}")
         import traceback

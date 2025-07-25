@@ -199,22 +199,24 @@ class QueryPlanner(BaseAgent):
         - entities: List of involved countries from the query example: ["Iran", "Israel"].
         """
         # - language: List of ISO 639-1 language codes associated with those countries example: ["fa", "he"].
-        #response = self.llm_service.generate_text(prompt)
+        # response = self.llm_service.generate_text(prompt)
 
         max_attempts = 3
         queries = []
 
         for attempt in range(max_attempts):
             try:
-                response = self.llm_service.generate_text(prompt)                
+                response = self.llm_service.generate_text(prompt)
                 parsed = safe_json_loads(response)
                 # if len(parsed) == 0:
                 #     self.logger.warning(f"Attempt {attempt + 1} failed to parse LLM response")
                 #     continue
-                
-                queries_generated: List[Dict[str, Any]] = self.validate_and_fix_query_response(parsed)
 
-                #Deduplicate only based on the 'query' field
+                queries_generated: List[Dict[str, Any]] = (
+                    self.validate_and_fix_query_response(parsed)
+                )
+
+                # Deduplicate only based on the 'query' field
                 seen_queries = set()
                 unique_queries = []
                 for q in queries_generated:
@@ -227,18 +229,26 @@ class QueryPlanner(BaseAgent):
                     queries = unique_queries
                     break  # Exit retry loop
                 else:
-                    self.logger.info(f"Attempt {attempt + 1}: only {len(unique_queries)} unique queries, retrying...")
+                    self.logger.info(
+                        f"Attempt {attempt + 1}: only {len(unique_queries)} unique queries, retrying..."
+                    )
 
             except Exception as e:
-                self.logger.warning(f"Attempt {attempt + 1} failed to parse LLM response: {e}")
+                self.logger.warning(
+                    f"Attempt {attempt + 1} failed to parse LLM response: {e}"
+                )
                 time.sleep(2)
         if not queries:
-            self.logger.warning("Falling back to default query due to repeated LLM failures.")
-            queries = [{
-                "query": f"{domains} news",
-                "source": "google_news",
-                "domains": domains,
-            }]
+            self.logger.warning(
+                "Falling back to default query due to repeated LLM failures."
+            )
+            queries = [
+                {
+                    "query": f"{domains} news",
+                    "source": "google_news",
+                    "domains": domains,
+                }
+            ]
 
         return queries
 
@@ -268,9 +278,9 @@ class QueryPlanner(BaseAgent):
         - locations: Geographic locations to focus on
         - description: Brief description of what this query targets
         """
-        
+
         max_attempts = 3
-        
+
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.llm_service.generate_text(prompt)
@@ -278,7 +288,9 @@ class QueryPlanner(BaseAgent):
                 try:
                     parsed = safe_json_loads(response)
                 except Exception as e:
-                    self.logger.warning(f"[Attempt {attempt}] Failed to parse JSON: {e}, preview: {response[:200]}")
+                    self.logger.warning(
+                        f"[Attempt {attempt}] Failed to parse JSON: {e}, preview: {response[:200]}"
+                    )
                     continue  # Retry JSON parsing
 
                 # Must be a list of valid dicts with non-empty keywords
@@ -287,33 +299,51 @@ class QueryPlanner(BaseAgent):
                     for item in parsed:
                         keywords = item.get("keywords", [])
                         if isinstance(keywords, list) and keywords:
-                            queries.append({
-                                "keywords": keywords,
-                                "themes": item.get("themes", []) if isinstance(item.get("themes", []), list) else [],
-                                "locations": item.get("locations", []) if isinstance(item.get("locations", []), list) else [],
-                                "description": item.get("description", "") if isinstance(item.get("description", ""), str) else "",
-                                "domains": domains,
-                                "source": "gdelt",
-                            })
+                            queries.append(
+                                {
+                                    "keywords": keywords,
+                                    "themes": (
+                                        item.get("themes", [])
+                                        if isinstance(item.get("themes", []), list)
+                                        else []
+                                    ),
+                                    "locations": (
+                                        item.get("locations", [])
+                                        if isinstance(item.get("locations", []), list)
+                                        else []
+                                    ),
+                                    "description": (
+                                        item.get("description", "")
+                                        if isinstance(item.get("description", ""), str)
+                                        else ""
+                                    ),
+                                    "domains": domains,
+                                    "source": "gdelt",
+                                }
+                            )
 
                     if queries:
                         return queries
 
-                self.logger.info(f"[Attempt {attempt}] No valid query objects found. Retrying...")
+                self.logger.info(
+                    f"[Attempt {attempt}] No valid query objects found. Retrying..."
+                )
 
             except Exception as e:
                 self.logger.warning(f"[Attempt {attempt}] LLM call failed: {e}")
 
             # Fallback if all attempts fail
             self.logger.warning("[LLM] All attempts failed. Returning fallback query.")
-            return [{
-                "keywords": [domains],
-                "source": "gdelt",
-                "domains": domains,
-                "themes": [],
-                "locations": [],
-                "description": f"Fallback query for domain: {domains}"
-            }]
+            return [
+                {
+                    "keywords": [domains],
+                    "source": "gdelt",
+                    "domains": domains,
+                    "themes": [],
+                    "locations": [],
+                    "description": f"Fallback query for domain: {domains}",
+                }
+            ]
 
     def _check_query_history(self, queries: List[Dict[str, Any]]) -> None:
         """Check recent query history to avoid duplicates."""

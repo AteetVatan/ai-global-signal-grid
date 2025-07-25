@@ -123,7 +123,7 @@ class Filters:
         language: Optional[Filter] = None,
         theme: Optional[Filter] = None,
         tone: Optional[Filter] = None,
-        tone_absolute: Optional[Filter] = None
+        tone_absolute: Optional[Filter] = None,
     ) -> None:
         """
         Construct filters for the GDELT API.
@@ -265,8 +265,8 @@ class Filters:
 
         if max_records:
             self.query_params.append(f"&maxrecords={str(max_records)}")
-            
-        sort="datedesc" # default sort order, leter will do modifications
+
+        sort = "datedesc"  # default sort order, leter will do modifications
         self.query_params.append(f"&sort={sort}")
 
     @property

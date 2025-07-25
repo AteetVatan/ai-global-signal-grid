@@ -86,4 +86,3 @@ class QueryState(BaseModel):
     gdelt_feed_entries: Optional[List[FeedEntry]] = Field(
         [], description="List of gdeltfeed entries"
     )
-    

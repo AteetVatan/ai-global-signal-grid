@@ -154,6 +154,7 @@ def retry_with_backoff(
 
     return decorator
 
+
 # @contextmanager --Python decorator that lets you write your own with blocks.
 @contextmanager
 def measure_execution_time(operation_name: str = "operation"):
@@ -188,7 +189,6 @@ def safe_json_loads(json_str: str, default: Any = None) -> Any:
         return safe_json_parse(json_str)
     except Exception as e:
         return e  # Catch and return ANY exception
-
 
 
 def safe_json_parse(response: Union[str, Any]) -> Any:
@@ -228,7 +228,7 @@ def safe_json_parse(response: Union[str, Any]) -> Any:
     raw = re.sub(r",\s*([\]}])", r"\1", raw)
 
     # Quote unquoted keys
-    raw = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)(\s*):', r'\1"\2"\3:', raw)
+    raw = re.sub(r"([{,]\s*)([a-zA-Z0-9_]+)(\s*):", r'\1"\2"\3:', raw)
 
     # Replace single quotes with double quotes (only if no double quotes exist)
     if '"' not in raw and "'" in raw:
@@ -246,7 +246,7 @@ def safe_json_parse(response: Union[str, Any]) -> Any:
     # Step 5: Last resort trimming
     if raw.count("{") > 0 and raw.count("}") > 0:
         last_curly = raw.rfind("}")
-        raw_trimmed = raw[:last_curly + 1]
+        raw_trimmed = raw[: last_curly + 1]
         try:
             return json.loads(raw_trimmed)
         except Exception:
@@ -258,7 +258,7 @@ def safe_json_parse(response: Union[str, Any]) -> Any:
     except Exception as e:
         print("Final parse failed. Input preview:\n", raw[:500])
         raise ValueError(f"Could not parse input as JSON or Python dict: {e}")
-        
+
 
 def chunk_list(lst: list, chunk_size: int) -> list:
     """

@@ -46,6 +46,7 @@ from ..services import FeedParserService
 from ..config.settings import get_settings
 from ..core.utils import safe_json_loads
 
+
 class GdeltFetcherAgent(BaseAgent):
     """
     Event Fetcher Agent for retrieving events from GDELT 2.0.
@@ -58,19 +59,19 @@ class GdeltFetcherAgent(BaseAgent):
     """
 
     def __init__(self):
-        """Initialize the GDELT Fetcher agent."""  
+        """Initialize the GDELT Fetcher agent."""
         super().__init__(
             name="GdeltFetcherAgent",
             description="Extracts RSS feeds from Google News",
         )
-        #self.feed_parser_service = FeedParserService()
+        # self.feed_parser_service = FeedParserService()
         self.logger = get_agent_logger("GdeltFetcherAgent")
         self.masx_gdelt_service = MasxGdeltService()
         self.country_normalizer = CountryNormalizer()
         self.llm_service = LLMService()
-        self.feed_parser_service = FeedParserService()  
+        self.feed_parser_service = FeedParserService()
         self.settings = get_settings()
-        
+
     def execute(self, input_data: Dict[str, Any]) -> AgentResult:
         """
         Execute Google RSS Feeder Agent.
@@ -86,7 +87,7 @@ class GdeltFetcherAgent(BaseAgent):
                 QueryState.model_validate(q) for q in input_data.get("queries", [])
             ]
 
-            result:AgentResult = self.fetch_events(queries)
+            result: AgentResult = self.fetch_events(queries)
 
             return result
         except Exception as e:
@@ -96,7 +97,9 @@ class GdeltFetcherAgent(BaseAgent):
                 metadata={"exception_type": type(e).__name__},
             )
 
-    def fetch_events(self, queries: List[QueryState], max_events: Optional[int] = 1000) -> AgentResult:
+    def fetch_events(
+        self, queries: List[QueryState], max_events: Optional[int] = 1000
+    ) -> AgentResult:
         """
         Fetch events from GDELT based on queries.
 
@@ -108,24 +111,34 @@ class GdeltFetcherAgent(BaseAgent):
             AgentResult: Contains fetched GDELT events
         """
         try:
-            self.logger.info("Fetching GDELT events", query_count=len(queries), max_events=max_events)
+            self.logger.info(
+                "Fetching GDELT events", query_count=len(queries), max_events=max_events
+            )
 
             combo_set = set()  # for deduplication (keyword, country)
             start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
             end_date = datetime.now().strftime("%Y-%m-%d")
             all_combo_list = []
             for query in queries:
-                
+
                 maxrecords = 250
-                countries = self.country_normalizer.get_country_names_from_pycountry(query.entities)
-                
+                countries = self.country_normalizer.get_country_names_from_pycountry(
+                    query.entities
+                )
+
                 if len(countries) == 0:
-                    #in case of no countries, ask llM to add countries
-                    countries = self._get_related_countries_from_llm(query.query, query.entities)
-                    #valid country name
-                    countries = self.country_normalizer.get_country_names_from_pycountry(countries)
+                    # in case of no countries, ask llM to add countries
+                    countries = self._get_related_countries_from_llm(
+                        query.query, query.entities
+                    )
+                    # valid country name
+                    countries = (
+                        self.country_normalizer.get_country_names_from_pycountry(
+                            countries
+                        )
+                    )
                     if not countries:
-                        continue # if no countries, skip this query
+                        continue  # if no countries, skip this query
 
                 combo_list = []
                 if len(query.entities) > 1:
@@ -133,7 +146,7 @@ class GdeltFetcherAgent(BaseAgent):
                         "start_date": start_date,
                         "end_date": end_date,
                         "maxrecords": maxrecords,
-                        "keyword": ", ".join(query.entities)
+                        "keyword": ", ".join(query.entities),
                     }
                     combo_list.append(default_combo)
 
@@ -149,38 +162,42 @@ class GdeltFetcherAgent(BaseAgent):
                                 continue
                             combo_set.add(combo_key)
 
-                            #make the keyword length more then 5 characters
+                            # make the keyword length more then 5 characters
                             if len(keyword_str) <= 5:
                                 key_len = len(keyword_str)
                                 n = 5 - key_len
                                 keyword_str = keyword_str + " " * n
-                                
-                            
+
                             combo = {
                                 "start_date": start_date,
                                 "end_date": end_date,
                                 "maxrecords": maxrecords,
                                 "keyword": keyword_str,
-                                "country": country
-                            }                            
-                           
+                                "country": country,
+                            }
+
                             combo_list.append(combo)
-                
-                #remove all combos that are already in all_combo_list
-                combo_list = [combo for combo in combo_list if combo not in all_combo_list]
+
+                # remove all combos that are already in all_combo_list
+                combo_list = [
+                    combo for combo in combo_list if combo not in all_combo_list
+                ]
 
                 if not combo_list:
                     query.gdelt_feed_entries = []
                     continue
 
                 # Fetch in batch (threaded)
-                #if self.settings.debug:
-                    #combo_list = combo_list[:3]
-                
-                
-                results = self.masx_gdelt_service.fetch_articles_batch_threaded(combo_list)             
+                # if self.settings.debug:
+                # combo_list = combo_list[:3]
+
+                results = self.masx_gdelt_service.fetch_articles_batch_threaded(
+                    combo_list
+                )
                 # Convert articles to FeedEntry
-                query.gdelt_feed_entries = self.feed_parser_service.process_gdelt_feed_entries(results)
+                query.gdelt_feed_entries = (
+                    self.feed_parser_service.process_gdelt_feed_entries(results)
+                )
                 all_combo_list.extend(combo_list)
 
             return AgentResult(
@@ -196,7 +213,9 @@ class GdeltFetcherAgent(BaseAgent):
                 metadata={"exception_type": type(e).__name__},
             )
 
-    def _get_related_countries_from_llm(self, query: str, entities: List[str]) -> list[str]:
+    def _get_related_countries_from_llm(
+        self, query: str, entities: List[str]
+    ) -> list[str]:
         """Use LLM to infer geopolitically related countries for given entities."""
 
         system_prompt = (
@@ -213,28 +232,31 @@ class GdeltFetcherAgent(BaseAgent):
         Which countries are geopolitically related?
         """
 
-        max_attempts = 1 # TODO: remove this
+        max_attempts = 1  # TODO: remove this
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.llm_service.generate_text(
                     user_prompt=user_prompt.strip(),
                     system_prompt=system_prompt,
                     temperature=0,
-                    max_tokens=512
+                    max_tokens=512,
                 )
 
                 result = self.validate_related_countries_json(response)
                 if result:
-                    return result 
+                    return result
 
-                self.logger.info(f"[Attempt {attempt}] Empty or invalid country list, retrying...")
+                self.logger.info(
+                    f"[Attempt {attempt}] Empty or invalid country list, retrying..."
+                )
 
             except Exception as e:
-                self.logger.warning(f"[Attempt {attempt}] LLM failed to infer related countries: {e}")
+                self.logger.warning(
+                    f"[Attempt {attempt}] LLM failed to infer related countries: {e}"
+                )
 
         return []
-    
-    
+
     def validate_related_countries_json(self, response_text: str) -> list[str]:
         try:
             # Extract first JSON object using regex
@@ -274,7 +296,7 @@ class GdeltFetcherAgent(BaseAgent):
             score += 0.1
 
         return min(score, 1.0)
-    
+
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
         Validate input data for google rss agent.

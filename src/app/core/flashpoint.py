@@ -19,11 +19,12 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, RootModel
 from ..core.querystate import QueryState, FeedEntry
+
 # from pydantic_core import RootModel
 
 
 class FlashpointItem(BaseModel):
-    
+
     title: str = Field(..., min_length=1, description="Title of the flashpoint event")
     description: str = Field(
         ..., min_length=1, description="Brief description of the event"
@@ -33,7 +34,9 @@ class FlashpointItem(BaseModel):
         None, description="List of domains the event belongs to"
     )
     queries: Optional[List[QueryState]] = Field(None, description="List of queries")
-    feed_entries: Optional[List[FeedEntry]] = Field(None, description="combined list of feed entries from google rss and gdelt feed")
+    feed_entries: Optional[List[FeedEntry]] = Field(
+        None, description="combined list of feed entries from google rss and gdelt feed"
+    )
 
     @field_validator("title", "description", mode="before")
     @classmethod

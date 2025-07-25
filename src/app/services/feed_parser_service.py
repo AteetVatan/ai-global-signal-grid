@@ -64,9 +64,10 @@ class FeedParserService:
         except Exception as e:
             logger.warning(f"Feed fetch failed: {url} — {e}")
         return url, None
-    
-    
-    def process_gdelt_feed_entries(self, entries:  Dict[str, List[Dict]]) -> List[FeedEntry]:                
+
+    def process_gdelt_feed_entries(
+        self, entries: Dict[str, List[Dict]]
+    ) -> List[FeedEntry]:
         # Convert articles to FeedEntry
         try:
             feed_entries = []
@@ -74,11 +75,13 @@ class FeedParserService:
                 for article in articles:
                     try:
                         seen_dt = self._parse_date(article.get("seen_date", ""))
-                        if seen_dt and seen_dt < datetime.now(seen_dt.tzinfo) - timedelta(
+                        if seen_dt and seen_dt < datetime.now(
+                            seen_dt.tzinfo
+                        ) - timedelta(
                             days=self.recent_days
                         ):  # from last 24 hour
                             continue  # Skip old entries
-                        
+
                         # url=article.get("url", "")
                         # title=article.get("title")
                         # seendate=DateUtils.convert_iso_to_date(article.get("seen_date", ""))
@@ -87,30 +90,37 @@ class FeedParserService:
                         # description=article.get("title","")
                         # language=LanguageUtils.get_language_code(article.get("language", ""))
                         # sourcecountry=article.get("country", "")
-                        
+
                         feed_entry = FeedEntry(
                             url=article.get("url", ""),
                             title=article.get("title", ""),
-                            seendate=DateUtils.convert_iso_to_date(article.get("seen_date", "")),
+                            seendate=DateUtils.convert_iso_to_date(
+                                article.get("seen_date", "")
+                            ),
                             domain=article.get("domain", ""),
-                            description=article.get("title",""),
-                            language=LanguageUtils.get_language_code(article.get("language", "")),
+                            description=article.get("title", ""),
+                            language=LanguageUtils.get_language_code(
+                                article.get("language", "")
+                            ),
                             sourcecountry=article.get("country", ""),
-                            image=article.get("image", "")
+                            image=article.get("image", ""),
                         )
                         feed_entries.append(feed_entry)
                     except Exception as e:
-                        logger.warning(f"Failed to process GDELT article {article.get('url', 'unknown')}: {e}")
+                        logger.warning(
+                            f"Failed to process GDELT article {article.get('url', 'unknown')}: {e}"
+                        )
                         continue  # Skip this article and continue with others
-                        
+
         except Exception as e:
             logger.error(f"Error processing GDELT feed entries: {e}")
             return []
-                
-        return feed_entries       
-        
 
-    def process_google_feed_entries(self, entries: List[dict], language_code: str) -> List[FeedEntry]:
+        return feed_entries
+
+    def process_google_feed_entries(
+        self, entries: List[dict], language_code: str
+    ) -> List[FeedEntry]:
         valid_entries = []
         for entry in entries:
             seen_dt = self._parse_date(entry.get("published", ""))
@@ -123,17 +133,18 @@ class FeedParserService:
             feed_entry = FeedEntry(
                 url=entry.get("link", ""),
                 title=entry.get("title", ""),
-                seendate=DateUtils.convert_rfc822_to_iso_date(entry.get("published", "")),
+                seendate=DateUtils.convert_rfc822_to_iso_date(
+                    entry.get("published", "")
+                ),
                 domain=entry.get("domain", ""),
-                description=entry.get("summary", ""),   
+                description=entry.get("summary", ""),
                 language=language_code,
                 sourcecountry=entry.get("country", ""),
-                image=entry.get("image", "")
+                image=entry.get("image", ""),
             )
             valid_entries.append(feed_entry)
 
         return valid_entries
-
 
     def run(self, query_state: QueryState) -> QueryState:
         """
@@ -144,11 +155,13 @@ class FeedParserService:
             logger.warning(f"[{query_state.query}] No RSS URLs found.")
             return query_state
 
-        #extract language code from url
+        # extract language code from url
         language_code = self.__extract_language_code(query_state.rss_urls[0])
         # Fetch all feeds in parallel
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            results: List[Tuple[str, List[dict]]] = list(executor.map(self._fetch_rss, query_state.rss_urls))
+            results: List[Tuple[str, List[dict]]] = list(
+                executor.map(self._fetch_rss, query_state.rss_urls)
+            )
 
         feed_entries = []
         for url, entries in results:
@@ -157,10 +170,12 @@ class FeedParserService:
                 feed_entries.extend(processed)
 
         query_state.google_feed_entries = feed_entries
-        logger.info(f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries from {len(query_state.rss_urls)} feeds.")
+        logger.info(
+            f"[{query_state.query}] Parsed {len(feed_entries)} recent feed entries from {len(query_state.rss_urls)} feeds."
+        )
 
         return query_state
-    
+
     def __extract_language_code(self, url: str) -> str:
         parsed_url = urlparse(url)
         query = parse_qs(parsed_url.query)
@@ -172,4 +187,3 @@ class FeedParserService:
         # Priority 2: ceid (e.g., "US:en" → "en")
         if "ceid" in query and ":" in query["ceid"][0]:
             return query["ceid"][0].split(":")[1]
-

@@ -41,6 +41,7 @@ from .feed_parser_service import FeedParserService
 from .data_sources import DataSourcesService, Article, GDELTEvent
 from .data_processing import DataProcessingPipeline, ProcessedArticle, TrendAnalysis
 from .streaming import StreamingService, StreamEvent, StreamFilter
+
 # from .streaming import WebSocketManager  # Commented out WebSocket functionality
 from .analytics import DataAnalyticsService, AnalyticsReport, RiskAssessment
 from .token_tracker import TokenCostTracker, get_token_tracker
@@ -53,7 +54,11 @@ from .flashpoint_detection import (
     create_flashpoint_detection_service,
 )
 from .ping_apis_service import PingApisService
-from .flashpoint_db_service import FlashpointDatabaseService, FlashpointRecord, FeedRecord
+from .flashpoint_db_service import (
+    FlashpointDatabaseService,
+    FlashpointRecord,
+    FeedRecord,
+)
 
 __all__ = [
     "DatabaseService",

@@ -28,11 +28,7 @@ class PingApisService:
     Automatically pings on instantiation unless disabled.
     """
 
-    def __init__(
-        self,
-        timeout: int = 60,
-        auto_ping: bool = True
-    ):
+    def __init__(self, timeout: int = 60, auto_ping: bool = True):
         self.settings = get_settings()
         self.ping_url = self.settings.GDELT_API_URL
         self.timeout = timeout
@@ -41,7 +37,6 @@ class PingApisService:
         if auto_ping:
             thread = threading.Thread(target=self._safe_ping, daemon=True)
             thread.start()
-
 
     def _safe_ping(self):
         try:

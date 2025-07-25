@@ -27,5 +27,5 @@ GOOGLE_TRANSLATE_VARIANTS = {
     # "sv": ["sv", "sv-SE", "sv-FI"],
     # "nl": ["nl", "nl-NL", "nl-BE"],
     # "no": ["no", "nb", "nn"],
-    #"ta": ["ta-IN", "ta-LK"],
+    # "ta": ["ta-IN", "ta-LK"],
 }

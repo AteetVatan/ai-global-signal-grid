@@ -33,7 +33,7 @@ class CountryNormalizer:
         for country in pycountry.countries:
             names.add(country.name.lower())
             if country.name.lower() == "türkiye" or country.name.lower() == "turkey":
-                chk= "0"
+                chk = "0"
             if hasattr(country, "official_name"):
                 names.add(country.official_name.lower())
             if hasattr(country, "common_name"):
@@ -89,12 +89,12 @@ class CountryNormalizer:
         """
         try:
             country = pycountry.countries.get(name=country_name)
-            if country and hasattr(country, 'alpha_2'):
+            if country and hasattr(country, "alpha_2"):
                 return country.alpha_2
 
             # Fuzzy match fallback
             matches = pycountry.countries.search_fuzzy(country_name)
-            if matches and hasattr(matches[0], 'alpha_2'):
+            if matches and hasattr(matches[0], "alpha_2"):
                 return matches[0].alpha_2
         except LookupError:
             return None
@@ -133,19 +133,19 @@ class CountryNormalizer:
         return [
             self.normalize(name) for name in names if self.normalize(name) is not None
         ]
-        
+
     def get_country_names_from_pycountry(self, names: List[str]) -> List[str]:
         """Return a list of normalized country names if they exist, otherwise return None."""
-        #use is self.valid_names
-        
-        valid_names = [
-            name for name in names if name.lower() in self.valid_names
-        ]
-        
-        valid_names_var =[]
+        # use is self.valid_names
+
+        valid_names = [name for name in names if name.lower() in self.valid_names]
+
+        valid_names_var = []
         for name in names:
-            if name.lower() in COUNTRY_VARIATIONS or name.lower() in COUNTRY_VARIATIONS.values():
-               valid_names_var.append(name)
-        
-               
-        return list(set(valid_names + valid_names_var))       
+            if (
+                name.lower() in COUNTRY_VARIATIONS
+                or name.lower() in COUNTRY_VARIATIONS.values()
+            ):
+                valid_names_var.append(name)
+
+        return list(set(valid_names + valid_names_var))

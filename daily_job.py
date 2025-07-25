@@ -36,6 +36,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
+
 def run_gsg_workflow():
     utc_now = datetime.utcnow().isoformat()
     logging.info(f"[{utc_now} UTC] Triggering MASX GSG workflow")
@@ -47,14 +48,16 @@ def run_gsg_workflow():
         logging.error(f"MASX GSG workflow failed: {e}", exc_info=True)
         print(f"[FATAL] Exception during workflow: {e}")
 
+
 def graceful_shutdown(signum, frame):
     logging.info("Shutdown signal received. Stopping scheduler.")
     scheduler.shutdown(wait=False)
     sys.exit(0)
 
+
 if __name__ == "__main__":
-    jobstores = {'default': SQLAlchemyJobStore(url='sqlite:///jobs.db')}
-    scheduler = BackgroundScheduler(jobstores=jobstores, timezone='UTC')
+    jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///jobs.db")}
+    scheduler = BackgroundScheduler(jobstores=jobstores, timezone="UTC")
 
     # Daily cron job: UTC midnight
     # scheduler.add_job(
@@ -69,10 +72,10 @@ if __name__ == "__main__":
     # One-time test job one minute from now
     scheduler.add_job(
         run_gsg_workflow,
-        trigger='date',
+        trigger="date",
         run_date=datetime.utcnow() + timedelta(minutes=5),
-        id='masx_gsg_test_once',
-        replace_existing=True
+        id="masx_gsg_test_once",
+        replace_existing=True,
     )
 
     scheduler.start()
