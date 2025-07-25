@@ -39,17 +39,15 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Set, Callable, AsyncGenerator
+from typing import Dict, List, Optional, Any, Set, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 import uuid
-import hashlib
 
 import structlog
 
 # from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel, validator
-import aiohttp
 
 from app.core.exceptions import StreamingError, AuthenticationError
 from app.services.data_sources import DataSourcesService, Article

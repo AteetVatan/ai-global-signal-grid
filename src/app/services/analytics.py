@@ -38,23 +38,18 @@ Features:
 import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import statistics
 from collections import defaultdict, Counter
 import numpy as np
 from scipy import stats
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
 import structlog
 from pydantic import BaseModel, validator
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 
 from app.core.exceptions import AnalyticsError, ValidationError
 from app.services.data_processing import ProcessedArticle, TrendAnalysis

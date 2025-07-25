@@ -48,8 +48,8 @@ Example Usage:
 """
 
 # Standard library imports
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from typing import Any, Optional, List
+from datetime import datetime
 from collections import defaultdict
 import json
 import threading
@@ -57,7 +57,6 @@ import time
 
 # Third-party imports
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions

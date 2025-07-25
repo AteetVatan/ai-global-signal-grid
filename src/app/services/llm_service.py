@@ -32,7 +32,7 @@ import json
 import time
 import aiohttp
 import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import tiktoken
 from openai import OpenAI
