@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # Run the application
     uvicorn.run(
-        "main:app",
+        "main_fast_api:app",
         host=settings.api_host or "0.0.0.0",
         port=settings.api_port or 8000,
         reload=settings.api_reload or False,
