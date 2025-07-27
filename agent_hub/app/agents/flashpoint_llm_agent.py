@@ -94,9 +94,10 @@ class FlashpointLLMAgent(BaseAgent):
         self.llm_service = LLMService.get_instance()  # singleton
         self.web_search = WebSearchService()
         self.flashpoint_service = FlashpointDetectionService()
-        self.token_tracker = get_token_tracker(
-            provider="mistral", model="mistral-small-2407"
-        )
+        # self.token_tracker = get_token_tracker(
+        #     provider="mistral", model="mistral-small-2407"
+        # )
+        self.token_tracker = get_token_tracker()  # for now using default token tracker
         self.country_normalizer = CountryNormalizer()
         # Get entity tracker
         self.entity_tracker = self.flashpoint_service.get_entity_tracker()
