@@ -156,12 +156,12 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
-        return self.environment == "dev"
+        return self.environment == "development"
 
     @property
     def is_production(self) -> bool:
         """Check if running in production mode."""
-        return self.environment == "prod"
+        return self.environment == "production"
 
     @property
     def has_supabase_config(self) -> bool:
