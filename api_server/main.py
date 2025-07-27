@@ -31,6 +31,7 @@ Usage:
     uvicorn src.main:app --host 0.0.0.0 --port 8000
 """
 
+import os
 import uvicorn
 from app.api import create_app
 from app.config.settings import get_settings
@@ -40,12 +41,12 @@ app = create_app()
 
 if __name__ == "__main__":
     settings = get_settings()
-
+    port= int(os.environ.get("PORT", 8000)), #settings.api_port or 8000,  # 8000 for render.com
     # Run the application
     uvicorn.run(
         app,  # "main:app",
         host=settings.api_host or "0.0.0.0",
-        port=settings.api_port or 7860,  # 7860for HF Spaces
+        port=port,
         reload=settings.api_reload or False,
         log_level=settings.log_level.lower() if settings.log_level else "info",
     )
