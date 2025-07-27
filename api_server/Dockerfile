@@ -11,12 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Expose port required by HF Spaces
-EXPOSE 7860
+# Expose port required
+EXPOSE 8000
 
 # Run FastAPI app via uvicorn
 #CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
 CMD ["python", "main.py"]
 
-# Expose port required by Render (optional, doesn't affect behavior)
-EXPOSE 8000
+
