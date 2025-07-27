@@ -1,0 +1,127 @@
+[
+    {
+        "title": "US-Ukraine Weapons Deal / US Gold Market / Russia-Ukraine Tension / US-China Tech Rivalry / Iran Nuclear Program / Hong Kong National Security Law / US–China Chip War / Taiwan Strait Tensions / Russian Troop Build-Up / Indo-Pacific Maritime Disputes",
+        "description": "Trump approves weapons deal, including Patriot air defense systems, to assist Ukraine in long-range attacks. Gold prices steady, set for weekly loss due to resilient US jobs and retail data, easing concerns about the economy. Russia has amassed troops near Ukraine's border, raising concerns of an invasion, despite ongoing diplomatic efforts. The US has imposed export controls on Chinese semiconductor firm SMIC, intensifying tech competition between the two nations. Iran has resumed enriching uranium to 60%, breaching the 2015 nuclear deal, as tensions with the US and allies continue. China's implementation of the National Security Law in Hong Kong has led to protests and concerns over civil liberties and autonomy. The US House of Representatives passed the CHIPS Act, providing $52 billion in subsidies for semiconductor manufacturing, intensifying US–China tech competition. Taiwan reported Chinese air force incursions near the island, amid heightened military tensions and US support for Taiwan's defense. NATO expressed concerns over Russian military build-up near Ukraine, as tensions escalate in Eastern Europe. China's coast guard clashed with the Philippine navy in the South China Sea, intensifying maritime disputes in the Indo-Pacific region.",
+        "entities": [
+            "Philippines",
+            "Iran",
+            "NATO",
+            "United States",
+            "Hong Kong",
+            "Ukraine",
+            "China",
+            "Taiwan",
+            "Russia"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Israel-Palestine Hostage Exchange / Israel-Palestine Conflict / Israel-Gaza Conflict",
+        "description": "Hamas group hands over 4 Israeli hostages' bodies, Israeli citizens return home after prisoner swap. Violence between Israeli forces and Palestinian militants in Gaza has escalated, resulting in numerous casualties and calls for a ceasefire. Israeli airstrikes targeted Palestinian Islamic Jihad in Gaza, following cross-border rocket attacks, raising regional tensions.",
+        "entities": [
+            "Israel",
+            "Palestine",
+            "Hamas"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Hong Kong Property Market",
+        "description": "Sale of 11 Skies property may relieve New World of liabilities in project, per UBS.",
+        "entities": [
+            "Hong Kong"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Syria Post-al-Assad",
+        "description": "Damascus sanctions lifted after al-Assad government fall, potential for increased regional stability.",
+        "entities": [
+            "Syria"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "US-China Rare Earth Trade Dispute / US Solar Energy Duties / EU-China Electric Vehicle Trade Tensions / US-German Mushroom Dumping Investigation / Tornado Cash Cryptocurrency Mixer Trial / Brazil-US Trade Tensions / US-China Trade Conflict / India-Myanmar Border Tensions / Taiwan-China Civil Defense Exercises / Sino-Indian Border Standoff / Myanmar Political Crisis / Myanmar Coup Aftermath",
+        "description": "China’s rare-earth product exports jumped in June, potentially indicating a pickup in magnet supplies after government-imposed curbs in trade war with US. US solar energy trade group petitions US International Trade Commission for antidumping and countervailing duties on Indian, Indonesian, and Laotian crystalline silicon photovoltaic cells. EU’s tough stance on Chinese EV manufacturers through tariffs and anti-subsidy investigations could undermine its climate goals by restricting access to affordable EVs. US Court of International Trade upheld the Commerce Department’s use of Germany as a comparison market for calculating the dumping rate on Dutch mushrooms. A man testified at the US trial of Tornado Cash co-founder Roman Storm that he used the cryptocurrency mixer to launder $1.1 million in stolen proceeds. Brazil threatens to retaliate against US President Donald Trump's pledge to impose 50% tariffs on all Brazilian goods and the US Trade Representative's investigation. Trump administration petitions the Supreme Court to hold off on reviewing a challenge by two educational toy manufacturers to President Donald Trump’s authority to issue tariffs under the International Emergency Economic Powers Act. India monitors escalating tensions along the India-Myanmar border as fresh clashes between rival Chin insurgent groups spark a renewed humanitarian crisis. Taiwan holds large-scale civil defense exercises against possible Chinese invasion, with air raid sirens and mass evacuation drills in the capital Taipei. Indian and Chinese troops have been in a standoff at the Line of Actual Control since May 2020. Myanmar's military has staged a coup, detaining political leaders and sparking protests, raising concerns over human rights and democracy. Myanmar's military junta continues its violent crackdown on pro-democracy protesters, causing regional and international concern.",
+        "entities": [
+            "Laos",
+            "Tornado Cash",
+            "EU",
+            "Myanmar",
+            "US",
+            "Indonesia",
+            "Germany",
+            "Brazil",
+            "Netherlands",
+            "China",
+            "India",
+            "Taiwan"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Maharashtra Legislature Brawl",
+        "description": "Physical altercation between political party members in Maharashtra legislature premises led to detentions and protests, escalating regional political tensions.",
+        "entities": [
+            "India",
+            "Maharashtra"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Taliban Advance in Afghanistan / Afghanistan's Islamic State Threat",
+        "description": "The Taliban has made significant territorial gains in Afghanistan, threatening the stability of the government as foreign troops withdraw. The Islamic State affiliate in Afghanistan has claimed responsibility for several recent attacks, raising concerns over the group's resurgence.",
+        "entities": [
+            "Taliban",
+            "Afghanistan",
+            "Islamic State"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Ethiopia Tigray Conflict / Ethiopian Civil War",
+        "description": "Ethiopia's military is engaged in a conflict with the Tigray People's Liberation Front, causing a humanitarian crisis and displacement of people. The conflict between the Ethiopian government and Tigray rebels continues, causing a humanitarian crisis and regional instability.",
+        "entities": [
+            "Ethiopia"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Colombia Drug War / Colombian Protests",
+        "description": "Colombia's government and rebel groups are involved in a longstanding conflict over drug trafficking, affecting regional stability. Protests and strikes continue in Colombia, as demonstrators demand social and economic reforms from the government.",
+        "entities": [
+            "Colombia"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "East Med Gas Disputes",
+        "description": "Turkey and Egypt are at odds over gas exploration rights in the Eastern Mediterranean, escalating tensions in the region.",
+        "entities": [
+            "Turkey",
+            "Egypt"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    }
+]

@@ -1,0 +1,24 @@
+[
+    {
+        "title": "Australia-US-China Tension / China-Vietnam Joint Military Exercise / US-Taiwan Trade Talks / US-China Tech Rivalry / US-China Trade Tariffs / India-Pakistan War Threat / South China Sea Tensions / Russia-Ukraine Tension / US-China Diplomatic Spat / India-Pakistan Border Tension / Russia-Ukraine Tension / US-China Tech Cold War / India-Pakistan Military Tension / Arctic Environmental Tension / Central America Demographics Tension",
+        "description": "Australia refuses to commit troops in advance to any conflict, including a potential US-China war over Taiwan. China and Vietnam conduct their first-ever joint ground forces training, signaling expanded military engagement between the two countries. Taiwanese and US officials hold meetings to reach a deal, avoiding tariffs so far but remaining on edge amidst China tensions. US and China continue their tech and chip war, with the US pressuring allies like Australia on potential conflict implications. US businesses navigate a tightrope to stay in China, despite the fraught trade environment and tariff pressures. US President Trump claims he stopped the war between India and Pakistan, warning them of trade consequences if fighting resumes. China and Vietnam navigate maritime frictions in the South China Sea, amidst heightened US tariff pressures. Russia deploys more troops near Ukraine border, raising concerns of invasion among US and European officials. China sanctions US officials over Taiwan support, escalating diplomatic tensions between the two superpowers. India accuses Pakistan of unprovoked firing along the Line of Control, heightening border tensions. Russia deploys troops to Crimea border, escalating tension with Ukraine. US tightens export controls on semiconductors, escalating tech cold war with China. India accuses Pakistan of violating ceasefire along the Line of Control. Russia and China expand Arctic presence, raising environmental concerns. Migration from Central America to US creates demographic and political tension.",
+        "entities": [
+            "Ukraine",
+            "United States",
+            "Europe",
+            "Taiwan",
+            "Australia",
+            "Central America",
+            "India",
+            "China",
+            "US",
+            "Pakistan",
+            "Vietnam",
+            "Russia",
+            "Arctic"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    }
+]

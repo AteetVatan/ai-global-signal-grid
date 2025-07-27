@@ -1,0 +1,16 @@
+[
+    {
+        "title": "India's Retail Inflation Eases / India-China Border Dispute / Hong Kong National Security Law / Taiwan Strait Tensions / US-China Tech Cold War",
+        "description": "India\\u2019s retail inflation eased to 2.10% in June from 2.82% in May. Indian and Chinese troops engage in physical brawls in Ladakh, escalating the ongoing border tension. China imposes a new national security law in Hong Kong, causing cultural and sovereignty issues. Chinese military flights near Taiwan escalate geopolitical tensions. US tightens export controls on semiconductors, escalating tech tensions with China.",
+        "entities": [
+            "Taiwan",
+            "US",
+            "China",
+            "India",
+            "Hong Kong"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    }
+]

@@ -1,0 +1,128 @@
+[
+    {
+        "title": "Thai-Cambodian Border Dispute",
+        "description": "Deadly fighting between Thai and Cambodian troops along their disputed border has left at least 12 people dead. Both countries have blamed each other for the escalation.",
+        "entities": [
+            "Thailand",
+            "Cambodia"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "US-China Tech Cold War",
+        "description": "The US has announced new trade deal with Japan, while maintaining tariffs on other countries, hinting at how other vague and hastily negotiated deals may turn out. China stands apart.",
+        "entities": [
+            "United States",
+            "China",
+            "Japan"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Syrian Airstrike on TV",
+        "description": "An airstrike on the Syrian Ministry of Defense was captured live on Syria TV, forcing the anchor to take cover. Israel has been carrying out airstrikes on Syria to protect the Druze minority.",
+        "entities": [
+            "Syria",
+            "Israel",
+            "Druze"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Kim Jong Un's Combat Readiness Directive / North Korean Military Involvement in Ukraine War",
+        "description": "North Korean leader Kim Jong Un called on his military forces to be fully prepared for real war, during an observed artillery firing contest. Reports indicate that North Korea has deployed over 10,000 troops and supplied military hardware in support of Russia\\u2019s campaign in Ukraine.",
+        "entities": [
+            "Kim Jong Un",
+            "North Korea",
+            "Russia",
+            "Ukraine"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Nigerian Senate Chaos",
+        "description": "Senate President Akpabio and Senate Leader Bamidele clashed in the Nigerian Senate, nearly escalating into a physical altercation during a closed-door session.",
+        "entities": [
+            "Nigeria"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Dropping Elephant APT Campaign",
+        "description": "Dropping Elephant launched a sophisticated cyber-espionage campaign targeting Turkish defense contractors, employing a complex five-stage execution chain disguised as conference invitations.",
+        "entities": [
+            "Dropping Elephant",
+            "Turkey"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "UK Defense Strategy and Research Sector Review",
+        "description": "RAND Europe research highlights challenges in UK defense strategies and research sector, emphasizing the need for nuanced understanding of international perceptions and efficient research processes.",
+        "entities": [
+            "UK",
+            "RAND Europe",
+            "Ministry of Defence",
+            "NHS",
+            "community pharmacies"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Bangabandhu Military Museum 3D Art Exhibition",
+        "description": "3D art exhibition at the Bangabandhu Military Museum in Dhaka, Bangladesh, attracts over 15,000 visitors in its first month.",
+        "entities": [
+            "Bangabandhu Military Museum",
+            "Bangladesh",
+            "3D art exhibition"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "US-Mexico Border: Elpidio Reyna Arrested / US Senate Bill on Immigration Enforcement / Global Military Drone Market Growth / ZenaTech, Inc. Partners with Eagle Point Funding / AgEagle Aerial Systems' eBee VISION Blue UAS Certified / Kratos Defense & Security Solutions' 5G-NTN Network Demonstration",
+        "description": "Elpidio Reyna, accused of assaulting LA police officers with rocks during ICE protests, arrested at the southern border. New Senate bill holds states accountable to pay back costs for deploying military resources when they refuse to enforce federal immigration law. Global military drone market estimated at $36.14 billion in 2023, projected to reach $88.01 billion by 2030, driven by increased defense spending and technological advancements. ZenaTech's subsidiary ZenaDrone partners with Eagle Point Funding to win US defense contracts, focusing on AI drones and Drone as a Service (DaaS) solutions. AgEagle Aerial Systems' eBee VISION receives Blue UAS certification, eligible for procurement by the US Department of Defense and federal agencies. Kratos Defense & Security Solutions successfully demonstrates an end-to-end 5G-NTN network with Intelsat's space and ground network, including its cloud-native, virtualized 5G core.",
+        "entities": [
+            "AgEagle Aerial Systems",
+            "Eagle Point Funding",
+            "FBI",
+            "Global",
+            "ZenaTech",
+            "LA",
+            "Mexico",
+            "Senate",
+            "Intelsat",
+            "Kratos Defense & Security Solutions",
+            "US"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    },
+    {
+        "title": "Reopening of RN134 Road in France",
+        "description": "RN134 road in France, connecting Pau to Spain via the Somport tunnel, to reopen on Dec 20 after repairs from torrential rains in Sep.",
+        "entities": [
+            "France",
+            "Spain"
+        ],
+        "domains": null,
+        "queries": null,
+        "feed_entries": null
+    }
+]
