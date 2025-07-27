@@ -22,7 +22,7 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         cd deploy_dir
-        git init
+        git init -b main   # Init directly on `main` branch
         git config user.email "ateetph@gmail.com"
         git config user.name "ateetvatan"
         git remote add origin https://AteetVatan:${HF_TOKEN}@huggingface.co/spaces/AteetVatan/masx-gsg-api
