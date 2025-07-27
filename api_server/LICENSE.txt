@@ -1,0 +1,22 @@
+Copyright (c) 2025 Ateet Vatan Bahmani  
+Project: MASX AI – Strategic Agentic AI System  
+All rights reserved.
+
+MASX AI is a proprietary software system developed and owned by Ateet Vatan Bahmani.  
+The source code, documentation, workflows, data pipelines, models, UI/UX designs,  
+and naming conventions (including "MASX AI", "MASX GSG", and related marks) are protected  
+under international copyright and trademark laws.
+
+You are not permitted to:
+- Reproduce, redistribute, or sublicense this software or its derivatives
+- Modify or use the codebase for any commercial purposes
+- Publish, expose, or use the system for external purposes without express written consent
+
+This system is intended solely for:
+- Demonstration and evaluation of MASX AI technologies by the author
+- Internal non-commercial research and prototyping
+
+For collaboration, licensing, or commercial inquiries:  
+📧 ab@masxai.com | 🌐 https://MASXAI.com
+
+Unauthorized use, reproduction, or distribution is strictly prohibited and may result in legal action.
