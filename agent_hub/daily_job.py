@@ -19,15 +19,9 @@
 # Contact: ab@masxai.com | MASXAI.com
 
 # scheduler.py
-
+from datetime import datetime
 import logging
 import time
-import signal
-import sys
-from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from apscheduler.triggers.date import DateTrigger
 
 from app.workflows.orchestrator import MASXOrchestrator
 
@@ -57,44 +51,6 @@ def run_gsg_workflow():
         except Exception as retry_error:
             logging.error(f"MASX GSG workflow failed: {retry_error}", exc_info=True)
             print(f"[FATAL] Exception during workflow: {retry_error}")
-
-def graceful_shutdown(signum, frame):
-    logging.info("Shutdown signal received. Stopping scheduler.")
-    scheduler.shutdown(wait=False)
-    sys.exit(0)
-
-
+            
 if __name__ == "__main__":
-    jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///jobs.db")}
-    scheduler = BackgroundScheduler(jobstores=jobstores, timezone="UTC")
-
-    # Daily cron job: UTC midnight
-    scheduler.add_job(
-        run_gsg_workflow,
-        trigger='cron',
-        hour=0,
-        minute=0,
-        id='masx_gsg_daily',
-        replace_existing=True
-    )
-
-    # One-time test job five minute from now
-    scheduler.add_job(
-        run_gsg_workflow,
-        trigger="date",
-        run_date=datetime.utcnow() + timedelta(minutes=1),
-        id="masx_gsg_test_once",
-        replace_existing=True,
-    )
-
-    scheduler.start()
-    logging.info("Scheduler started; daily job set for midnight UTC.")
-
-    signal.signal(signal.SIGINT, graceful_shutdown)
-    signal.signal(signal.SIGTERM, graceful_shutdown)
-
-    try:
-        while True:
-            time.sleep(60)
-    except (KeyboardInterrupt, SystemExit):
-        graceful_shutdown(None, None)
+    run_gsg_workflow()
