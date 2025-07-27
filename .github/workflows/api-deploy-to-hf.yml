@@ -1,0 +1,28 @@
+name: Deploy MASX GSG API to Hugging Face
+
+on:
+  push:
+    branches: [main]  # or your desired deployment branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Copy api_server contents to temp dir
+      run: |
+        mkdir deploy_dir
+        cp -r api_server/* deploy_dir/
+
+    - name: Configure Git for Hugging Face
+      run: |
+        cd deploy_dir
+        git init
+        git config --global user.email "you@masxai.com"
+        git config --global user.name "ateetvatan"
+        git remote add hf https://AteetVatan:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/AteetVatan/masx-gsg-api
+        git add .
+        git commit -m "Auto-deploy api_server to HF Space"
+        git push hf master --force
