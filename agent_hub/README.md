@@ -54,7 +54,8 @@ The system performs a full-scale internet scan daily at 00:00 UTC, continuously 
 ### Autonomous Workflows
 - **Daily Intelligence Cycle**: Automated 24/7 monitoring and analysis
 - **Flashpoint Detection**: LLM-powered identification of global tensions
-- **Parallel Processing**: Concurrent processing of multiple flashpoints
+- **Fan-Out/Fan-In Pattern**: Parallel processing of multiple flashpoints with aggregation
+- **Subgraph Processing**: Each flashpoint processed through dedicated subgraph
 - **Multi-Source Fusion**: Google RSS + GDELT data aggregation
 - **Feed Generation**: Production of thousands of validated news feed URLs
 - **Database Storage**: Automated storage to Supabase with daily table management
@@ -70,57 +71,64 @@ The system performs a full-scale internet scan daily at 00:00 UTC, continuously 
 
 ```mermaid
 flowchart TD
-    A[Daily Job Scheduler] --> B[MASX Orchestrator]
-    B --> C[Flashpoint LLM Agent]
-    B --> D[Flashpoint Validator Agent]
-    B --> E[Domain Classifier]
-    B --> F[Query Planner]
-    B --> G[Language Agent]
-    B --> H[Translation Agent]
-    B --> I[Google RSS Feeder]
-    B --> J[GDELT Feed Agent]
-    B --> K[Feed Finalizer]
+    A[Daily Job Scheduler] --> B[Start Workflow]
+    B --> C[Flashpoint Detection]
+    C --> D[Flashpoint Validator]
+    D --> E{Fan Out Flashpoints}
     
-    C --> L[LangGraph State Manager]
-    D --> L
-    E --> L
-    F --> L
-    G --> L
-    H --> L
-    I --> L
-    J --> L
-    K --> L
+    E --> F[Per-Flashpoint Subgraph]
+    F --> G[Domain Classification]
+    G --> H[Query Planning]
+    H --> I[Language Agent]
+    I --> J[Translation Agent]
+    J --> K[Google RSS Feeder]
+    K --> L[GDELT Feed Agent]
+    L --> M[Feed Finalizer]
     
-    L --> M[Supabase Database]
-    L --> N[Flashpoint Store]
+    M --> N[Fan In Flashpoints]
+    N --> O[End Workflow]
     
-    I --> O[Google News RSS]
-    J --> P[GDELT API]
+    C --> P[OpenAI GPT-4]
+    C --> Q[Mistral AI]
     
-    C --> Q[OpenAI GPT-4]
-    C --> R[Mistral AI]
+    K --> R[Google News RSS]
+    L --> S[GDELT API]
     
-    K --> S[Feed URLs & Data]
-    K --> T[Flashpoint Records]
+    N --> T[Supabase Database]
+    N --> U[Flashpoint Store]
+    
+    subgraph "Main Workflow"
+        B
+        C
+        D
+        E
+        N
+        O
+    end
+    
+    subgraph "Per-Flashpoint Processing"
+        G
+        H
+        I
+        J
+        K
+        L
+        M
+    end
     
     subgraph "Data Sources"
-        O
-        P
+        R
+        S
     end
     
     subgraph "LLM Providers"
+        P
         Q
-        R
     end
     
     subgraph "Storage Layer"
-        M
-        N
-    end
-    
-    subgraph "Output Systems"
-        S
         T
+        U
     end
 ```
 
@@ -138,12 +146,14 @@ flowchart TD
 - **[Sentence Transformers](https://www.sbert.net/)** - Semantic similarity and clustering
 - **[Pandas](https://pandas.pydata.org/)** - Data manipulation and analysis
 - **[NumPy](https://numpy.org/)** - Numerical computing
+- **[Hugging Face Models](https://huggingface.co/)** - Entity detection and NLLB translation models
 
 ### Data Sources
 - **[GDELT](https://www.gdeltproject.org/)** - Global Database of Events, Language, and Tone
 - **[Google News RSS](https://news.google.com/)** - Real-time news feeds
 - **[Feedparser](https://feedparser.readthedocs.io/)** - RSS/Atom feed processing
 - **[Newspaper3k](https://newspaper.readthedocs.io/)** - Article extraction and processing
+- **[Google Search API](https://developers.google.com/custom-search)** - Web search for flashpoint detection
 
 ### Storage & Infrastructure
 - **[Supabase](https://supabase.com/)** - PostgreSQL database and real-time features
@@ -155,12 +165,28 @@ flowchart TD
 - **[LangDetect](https://github.com/Mimino666/langdetect)** - Language detection
 - **[PyCountry](https://pypi.org/project/pycountry/)** - Country and language utilities
 - **[Country Converter](https://github.com/konstantinstadler/country_converter)** - Country code conversion
+- **[NLLB Translation](https://huggingface.co/facebook/nllb-200-distilled-600M)** - Facebook's No Language Left Behind model
 
 ### Scheduling & Orchestration
 - **[APScheduler](https://apscheduler.readthedocs.io/)** - Task scheduling and job management
 - **[Nest Asyncio](https://github.com/erdewit/nest_asyncio)** - Nested event loop support
 
 ## 🧪 How It Works
+
+### Workflow Architecture
+
+The MASX AI system uses a sophisticated **Fan-Out/Fan-In** pattern with **subgraph processing**:
+
+1. **Main Workflow**: Orchestrates the overall process
+   - Start → Flashpoint Detection → Flashpoint Validation → Fan-Out
+   - Fan-In → End
+
+2. **Per-Flashpoint Subgraph**: Processes each flashpoint in parallel
+   - Domain Classification → Query Planning → Language Agent → Translation Agent
+   - Google RSS Feeder → GDELT Feed Agent → Feed Finalizer
+
+3. **Parallel Execution**: Multiple flashpoints processed concurrently
+4. **Result Aggregation**: All results collected and stored in database
 
 ### Agent Collaboration System
 
@@ -186,7 +212,7 @@ sequenceDiagram
     O->>FVA: Validate Flashpoints
     FVA->>O: Return Validated Flashpoints
     
-    Note over O: For Each Flashpoint (Parallel)
+    Note over O: Fan Out - Parallel Processing
     O->>DC: Classify Domain
     DC->>O: Return Domain Categories
     
@@ -208,7 +234,7 @@ sequenceDiagram
     O->>FF: Merge & Deduplicate
     FF->>O: Return Final Feeds
     
-    Note over O: Fan-in Results
+    Note over O: Fan In - Aggregate Results
     O->>DB: Store Flashpoints & Feeds
     DB->>O: Confirm Storage
     
@@ -220,54 +246,63 @@ sequenceDiagram
 #### ⚡ Flashpoint LLM Agent
 - **Purpose**: Identifies emerging global tensions using LLM reasoning
 - **Capabilities**: LLM-powered flashpoint detection, iterative refinement, search optimization
+- **Services**: LLM Service + Google Search API
 - **Input**: Global tension queries and search parameters
 - **Output**: Curated list of flashpoints with descriptions and entities
 
 #### ✅ Flashpoint Validator Agent
 - **Purpose**: Validates and filters flashpoints for relevance
 - **Capabilities**: Relevance scoring, duplicate detection, quality filtering
+- **Services**: LLM Service
 - **Input**: Raw flashpoint list from LLM agent
 - **Output**: Validated and filtered flashpoint dataset
 
 #### 🎯 Domain Classifier Agent
 - **Purpose**: Categorizes geopolitical events and threats
 - **Capabilities**: Event classification, threat assessment, priority ranking
+- **Services**: LLM Service
 - **Input**: Flashpoint data with title and description
 - **Output**: Domain categories and classifications
 
 #### 🧠 Query Planner Agent
 - **Purpose**: Orchestrates multi-step intelligence gathering
 - **Capabilities**: Query optimization, source selection, workflow planning
+- **Services**: LLM Service
 - **Input**: Flashpoint data with entities and domains
 - **Output**: Optimized query strategies for multiple sources
 
 #### 🌐 Language Agent
 - **Purpose**: Extracts and identifies languages from entities
 - **Capabilities**: Language detection, entity-language mapping, query localization
+- **Services**: LLM Service + Hugging Face Models (Entity Detection)
 - **Input**: Query states with entities
 - **Output**: Language-aware query states
 
 #### 🔤 Translation Agent
 - **Purpose**: Translates queries to target languages
 - **Capabilities**: Multi-language translation, query adaptation, language optimization
+- **Services**: Translation Service (facebook/nllb-200-distilled-600M)
 - **Input**: Language-aware query states
 - **Output**: Translated queries for multiple languages
 
 #### 📰 Google RSS Feeder Agent
 - **Purpose**: Fetches news from Google RSS feeds
 - **Capabilities**: RSS feed aggregation, content extraction, source validation
+- **Services**: Feed Parser Service + Google RSS URL Generation
 - **Input**: Translated queries
 - **Output**: Google RSS feed entries with metadata
 
 #### 📊 GDELT Feed Agent
 - **Purpose**: Retrieves events from GDELT database
 - **Capabilities**: GDELT API integration, event filtering, temporal analysis
+- **Services**: GDELT API
 - **Input**: Translated queries
 - **Output**: GDELT event entries with geopolitical data
 
 #### 🔗 Feed Finalizer Agent
 - **Purpose**: Merges and deduplicates feed entries
 - **Capabilities**: Content deduplication, feed merging, quality filtering
+- **Services**: Internal Processing (No External Services)
 - **Input**: Google RSS and GDELT feed entries
 - **Output**: Finalized, deduplicated feed dataset
 
