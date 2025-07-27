@@ -1,3 +1,13 @@
+---
+title: MASX GSG API
+emoji: 🛰️🛰️🛰️🛰️🛰️
+colorFrom: blue
+colorTo: green
+sdk: static
+sdk_version: "1.0.0"
+app_file: main.py
+pinned: false
+---
 # MASX AI - GSG – Global Signal Grid API
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com/)
