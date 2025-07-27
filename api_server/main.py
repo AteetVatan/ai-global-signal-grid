@@ -36,15 +36,14 @@ import uvicorn
 from app.api import create_app
 from app.config.settings import get_settings
 
-# Create FastAPI application
 app = create_app()
 
 if __name__ == "__main__":
     settings = get_settings()
-    port= int(os.environ.get("PORT", 8000)), #settings.api_port or 8000,  # 8000 for render.com
-    # Run the application
+    port = int(os.environ.get("PORT", 8000))
+
     uvicorn.run(
-        app,  # "main:app",
+        "main:app" if settings.api_reload else app,
         host=settings.api_host or "0.0.0.0",
         port=port,
         reload=settings.api_reload or False,
