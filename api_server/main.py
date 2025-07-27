@@ -32,8 +32,8 @@ Usage:
 """
 
 import uvicorn
-from src.app.api import create_app
-from src.app.config.settings import get_settings
+from app.api import create_app
+from app.config.settings import get_settings
 
 # Create FastAPI application
 app = create_app()
@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # Run the application
     uvicorn.run(
-        "main_fast_api:app",
+        "main:app",
         host=settings.api_host or "0.0.0.0",
         port=settings.api_port or 8000,
         reload=settings.api_reload or False,
