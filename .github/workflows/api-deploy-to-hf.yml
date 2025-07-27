@@ -28,4 +28,4 @@ jobs:
         git remote add origin https://AteetVatan:${HF_TOKEN}@huggingface.co/spaces/AteetVatan/masx-gsg-api
         git add .
         git commit -m "Auto-deploy api_server to Hugging Face"
-        git push origin master --force
+        git push origin main --force
