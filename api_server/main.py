@@ -40,7 +40,7 @@ app = create_app()
 
 if __name__ == "__main__":
     settings = get_settings()
-
+    import uvicorn
     # Run the application
     uvicorn.run(
         "main:app",
