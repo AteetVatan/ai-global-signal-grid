@@ -74,8 +74,7 @@ flowchart TD
     A[Daily Job Scheduler] --> B[Start Workflow]
     B --> C[Flashpoint Detection]
     C --> D[Flashpoint Validator]
-    D --> E{Fan Out Flashpoints}
-    
+    D --> E{Fan Out Flashpoints}    
     E --> F[Per-Flashpoint Subgraph]
     F --> G[Domain Classification]
     G --> H[Query Planning]
@@ -86,10 +85,13 @@ flowchart TD
     L --> M[Feed Finalizer]
     
     M --> N[Fan In Flashpoints]
-    N --> O[End Workflow]
+    N --> O[End Workflow]    
     
-    C --> P[OpenAI GPT-4]
-    C --> Q[Mistral AI]
+    Q[Mistral AI]
+    P[OpenAI GPT-4]
+    V[Google Search API] 
+    W[deep_translator]
+    X[NLLB] 
     
     K --> R[Google News RSS]
     L --> S[GDELT API]
@@ -116,7 +118,10 @@ flowchart TD
         M
     end
     
-    subgraph "Data Sources"
+    subgraph "Services"
+        V
+        W
+        X
         R
         S
     end
@@ -124,8 +129,8 @@ flowchart TD
     subgraph "LLM Providers"
         P
         Q
-    end
-    
+    end   
+
     subgraph "Storage Layer"
         T
         U

@@ -100,8 +100,7 @@ graph TD
     Query --> Lang[language_agent]
     Lang --> Trans[translation_agent]
     Trans --> GoogleRSS[google_rss_feeder_agent]
-    Trans --> Gdelt[gdelt_feed_agent]
-    GoogleRSS --> Gdelt
+    GoogleRSS--> Gdelt[gdelt_feed_agent]
     Gdelt --> Merge[merge_feeds_agent]
     
     style Domain fill:#e3f2fd
