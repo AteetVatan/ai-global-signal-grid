@@ -69,6 +69,8 @@ class FlashpointDatabaseService:
         self.pool: Optional[asyncpg.Pool] = None  # asyncpg pool
         self._connection_params = {}
         self._initialize_connection()
+        self._create_required_tables()
+        #ateet
 
     def _initialize_connection(self):
         """Initialize database connection parameters."""
@@ -101,6 +103,20 @@ class FlashpointDatabaseService:
         except Exception as e:
             self.logger.error(f"Failed to initialize database connection: {e}")
             raise DatabaseException(f"Database initialization failed: {str(e)}")
+        
+    def _create_required_tables(self):
+        """Create required tables."""
+        try:
+            #get daliy table name
+            flashpoint_table_name = self.get_daily_table_name("flash_point")            
+            #flashpoint_table_name ='flash_point_20250807'
+            self.ensure_flashpoint_table_exists(flashpoint_table_name)            
+            feeds_table_name = self.get_daily_table_name("feed_entries")
+            #feeds_table_name ='feed_entries_20250807'
+            self.ensure_feed_table_exists(feeds_table_name, flashpoint_table_name)
+        except Exception as e:
+            self.logger.error(f"Failed to create required tables: {e}")
+            raise DatabaseException(f"Table creation failed: {str(e)}")
 
     async def connect(self):
         """Establish database connections."""
@@ -166,8 +182,47 @@ class FlashpointDatabaseService:
     def get_daily_table_name(self, base: str, date: Optional[datetime] = None) -> str:
         date = date or datetime.utcnow()
         return f"{base}_{date.strftime('%Y%m%d')}"
+    
+    def ensure_flashpoint_table_exists(self, table_name: str) -> None:
+        """
+        Ensure that the daily flashpoint table exists in the database.
 
-    async def ensure_flashpoint_table_exists(self, table_name: str) -> None:
+        Args:
+            table_name (str): Name of the flashpoint table to create
+        """
+        conn_str = self._connection_params["database_url"]
+
+        create_table_query = f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            entities JSONB,
+            domains JSONB,
+            run_id TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """
+        enable_rls_query = f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
+        force_rls_query = f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
+        with measure_execution_time(f"ensure_table:{table_name}"):
+            try:
+                with closing(psycopg2.connect(conn_str)) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(create_table_query)
+                        cur.execute(enable_rls_query)  # Enable RLS
+                        cur.execute(force_rls_query) # Force RLS
+                    conn.commit()
+
+                self.logger.info(f"Table ensured: {table_name}")
+
+            except Exception as e:
+                self.logger.error(f"Failed to ensure table {table_name}: {e}")
+                raise DatabaseException(f"Table creation failed: {str(e)}")
+
+
+    async def ensure_flashpoint_table_exists_async(self, table_name: str) -> None:
         """
         Ensure that the daily flashpoint table exists in the database.
 
@@ -191,10 +246,13 @@ class FlashpointDatabaseService:
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
                 """
-
+                enable_rls_query = f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
+                force_rls_query = f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
                 async with self.pool.acquire() as conn:
                     await conn.execute(query)
-                    self.logger.info(f"✅ Table ensured: {table_name}")
+                    await conn.execute(enable_rls_query)
+                    await conn.execute(force_rls_query)
+                    self.logger.info(f"Table ensured: {table_name}")
 
             except Exception as e:
                 self.logger.error(f"Failed to ensure table {table_name}: {e}")
@@ -243,12 +301,15 @@ class FlashpointDatabaseService:
         END
         $$;
         """
-
+        enable_rls_query = f"ALTER TABLE {feed_table} ENABLE ROW LEVEL SECURITY;"
+        force_rls_query = f"ALTER TABLE {feed_table} FORCE ROW LEVEL SECURITY;"
         with closing(psycopg2.connect(conn_str)) as conn:
             with conn.cursor() as cur:
                 cur.execute(create_table_query)
                 cur.execute(create_index_query)
                 cur.execute(alter_fk_if_needed_query)
+                cur.execute(enable_rls_query)
+                cur.execute(force_rls_query)
             conn.commit()
 
     async def ensure_feed_table_exists_async(
@@ -299,12 +360,14 @@ class FlashpointDatabaseService:
             END
             $$;
             """
-
+            enable_rls_query = f"ALTER TABLE {feed_table} ENABLE ROW LEVEL SECURITY;"
+            force_rls_query = f"ALTER TABLE {feed_table} FORCE ROW LEVEL SECURITY;"
             async with self.pool.acquire() as conn:
                 await conn.execute(create_table_query)
                 await conn.execute(create_index_query)
                 await conn.execute(alter_fk_if_needed_query)
-
+                await conn.execute(enable_rls_query)
+                await conn.execute(force_rls_query)
             self.logger.info(f"Feed table ensured: {feed_table}")
 
     async def store_flashpoint(self, fp: FlashpointRecord, run_id: str) -> str:
@@ -327,7 +390,7 @@ class FlashpointDatabaseService:
                 table_name = self.get_daily_table_name("flash_point")
 
                 # Step 2: Ensure the table exists (Postgres side)
-                await self.ensure_flashpoint_table_exists(table_name)
+                await self.ensure_flashpoint_table_exists_async(table_name)
                 now = datetime.utcnow().isoformat()
                 # Step 3: Convert to record and clean up
                 record = FlashpointRecord(
