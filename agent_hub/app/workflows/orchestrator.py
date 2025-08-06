@@ -80,10 +80,10 @@ class MASXOrchestrator:
         self.logger = get_workflow_logger("MASXOrchestrator")
         self.agents = {}
         self.workflows = {}
+        self.flashpoint_db_service = FlashpointDatabaseService()
         self._initialize_agents()
         self.flashpoint_store = FlashpointStore()
-        # self.ping_apis_service = PingApisService()
-        self.flashpoint_db_service = FlashpointDatabaseService()
+        # self.ping_apis_service = PingApisService()        
         self.workflow_id = ""
 
     def _initialize_agents(self):

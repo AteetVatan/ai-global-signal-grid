@@ -78,7 +78,7 @@ if __name__ == "__main__":
         replace_existing=True
     )
 
-    # One-time test job five minute from now
+    # One-time test job one minute from now
     scheduler.add_job(
         run_gsg_workflow,
         trigger="date",
