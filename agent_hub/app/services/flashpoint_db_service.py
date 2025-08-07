@@ -204,15 +204,14 @@ class FlashpointDatabaseService:
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
         """
-        enable_rls_query = f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
-        force_rls_query = f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
+        rls_policies = self.__get_all_rls_policies_cmd(table_name)
         with measure_execution_time(f"ensure_table:{table_name}"):
             try:
                 with closing(psycopg2.connect(conn_str)) as conn:
                     with conn.cursor() as cur:
                         cur.execute(create_table_query)
-                        cur.execute(enable_rls_query)  # Enable RLS
-                        cur.execute(force_rls_query) # Force RLS
+                        for policy in rls_policies:
+                            cur.execute(policy)
                     conn.commit()
 
                 self.logger.info(f"Table ensured: {table_name}")
@@ -245,13 +244,12 @@ class FlashpointDatabaseService:
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
-                """
-                enable_rls_query = f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
-                force_rls_query = f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
+                """              
+                rls_policies = self.__get_all_rls_policies_cmd(table_name)
                 async with self.pool.acquire() as conn:
-                    await conn.execute(query)
-                    await conn.execute(enable_rls_query)
-                    await conn.execute(force_rls_query)
+                    await conn.execute(query)                  
+                    for policy in rls_policies:
+                        await conn.execute(policy)
                     self.logger.info(f"Table ensured: {table_name}")
 
             except Exception as e:
@@ -301,15 +299,14 @@ class FlashpointDatabaseService:
         END
         $$;
         """
-        enable_rls_query = f"ALTER TABLE {feed_table} ENABLE ROW LEVEL SECURITY;"
-        force_rls_query = f"ALTER TABLE {feed_table} FORCE ROW LEVEL SECURITY;"
+        rls_policies = self.__get_all_rls_policies_cmd(feed_table)
         with closing(psycopg2.connect(conn_str)) as conn:
             with conn.cursor() as cur:
                 cur.execute(create_table_query)
                 cur.execute(create_index_query)
                 cur.execute(alter_fk_if_needed_query)
-                cur.execute(enable_rls_query)
-                cur.execute(force_rls_query)
+                for policy in rls_policies:
+                    cur.execute(policy)
             conn.commit()
 
     async def ensure_feed_table_exists_async(
@@ -360,15 +357,15 @@ class FlashpointDatabaseService:
             END
             $$;
             """
-            enable_rls_query = f"ALTER TABLE {feed_table} ENABLE ROW LEVEL SECURITY;"
-            force_rls_query = f"ALTER TABLE {feed_table} FORCE ROW LEVEL SECURITY;"
+            rls_policies = self.__get_all_rls_policies_cmd(feed_table)
             async with self.pool.acquire() as conn:
                 await conn.execute(create_table_query)
                 await conn.execute(create_index_query)
                 await conn.execute(alter_fk_if_needed_query)
-                await conn.execute(enable_rls_query)
-                await conn.execute(force_rls_query)
-            self.logger.info(f"Feed table ensured: {feed_table}")
+                for policy in rls_policies:
+                    await conn.execute(policy)
+            self.logger.info(f"Feed table ensured: {feed_table}")       
+        
 
     async def store_flashpoint(self, fp: FlashpointRecord, run_id: str) -> str:
         """
@@ -414,6 +411,7 @@ class FlashpointDatabaseService:
                     f"[store_flashpoint] Payload for {table_name}: {json.dumps(data, indent=2)}"
                 )
                 # Step 4: Insert using Supabase client
+                
                 result = self.client.table(table_name).insert(data).execute()
 
                 if result.data:
@@ -534,3 +532,79 @@ class FlashpointDatabaseService:
 
     def is_valid_postgres_url(self, url: str) -> bool:
         return bool(re.match(r"^postgres(?:ql)?://.+:.+@.+:\d+/.+", url))
+    
+    def __get_all_rls_policies_cmd(self, table_name: str) -> List[str]:
+        """
+        Generate all RLS-related SQL commands for the given table:
+        - Enables and forces RLS
+        - Creates SELECT, INSERT, UPDATE, DELETE policies for 'authenticated' role
+        """
+
+        enable_rls_query = f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
+        force_rls_query = f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
+
+        create_select_policy_query = f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE policyname = 'allow_select' AND tablename = '{table_name}'
+            ) THEN
+                EXECUTE format($sql$
+                    CREATE POLICY allow_select ON {table_name}
+                    FOR SELECT TO anon, authenticated USING (true);
+                $sql$);
+            END IF;
+        END $$;
+        """
+
+        create_insert_policy_query = f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE policyname = 'allow_insert' AND tablename = '{table_name}'
+            ) THEN
+                EXECUTE format($sql$
+                    CREATE POLICY allow_insert ON {table_name}
+                    FOR INSERT TO anon, authenticated WITH CHECK (true);
+                $sql$);
+            END IF;
+        END $$;
+        """
+
+        create_update_policy_query = f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE policyname = 'allow_update' AND tablename = '{table_name}'
+            ) THEN
+                EXECUTE format($sql$
+                    CREATE POLICY allow_update ON {table_name}
+                    FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+                $sql$);
+            END IF;
+        END $$;
+        """
+
+        create_delete_policy_query = f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE policyname = 'allow_delete' AND tablename = '{table_name}'
+            ) THEN
+                EXECUTE format($sql$
+                    CREATE POLICY allow_delete ON {table_name}
+                    FOR DELETE TO anon, authenticated USING (true);
+                $sql$);
+            END IF;
+        END $$;
+        """
+
+        return [
+            enable_rls_query,
+            force_rls_query,
+            create_select_policy_query,
+            create_insert_policy_query,
+            create_update_policy_query,
+            create_delete_policy_query
+        ]
+
