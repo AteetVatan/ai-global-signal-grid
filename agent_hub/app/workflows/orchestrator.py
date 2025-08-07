@@ -797,7 +797,7 @@ class MASXOrchestrator:
             store = self.flashpoint_store
             all_results = store.get_items()
             state.data["final_data"] = all_results
-            self._persist_flashpoints(all_results)
+            #self._persist_flashpoints(all_results) do it on s3 bucket
         else:
             all_results = self._load_all_persist_flashpoints()
 
