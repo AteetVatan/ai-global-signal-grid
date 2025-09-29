@@ -74,13 +74,14 @@ class MASXOrchestrator:
     - Workflow monitoring and logging
     """
 
-    def __init__(self):
+    def __init__(self, date: Optional[datetime] = None, debug: bool = False):
         """Initialize the MASX orchestrator."""
         self.settings = get_settings()
+        self.debug = debug
         self.logger = get_workflow_logger("MASXOrchestrator")
         self.agents = {}
         self.workflows = {}
-        self.flashpoint_db_service = FlashpointDatabaseService()
+        self.flashpoint_db_service = FlashpointDatabaseService(date)
         self._initialize_agents()
         self.flashpoint_store = FlashpointStore()
         # self.ping_apis_service = PingApisService()        
@@ -439,7 +440,12 @@ class MASXOrchestrator:
         try:
             flashpointdataset = state.data["all_flashpoints"]
             state_list = []
+           
+            count = 0
             for flashpoint in flashpointdataset:
+                if self.debug and count > 0:
+                    break
+                count += 1
                 # Initialize state
                 new_state = MASXState(
                     workflow_id=state.workflow_id,
@@ -797,7 +803,7 @@ class MASXOrchestrator:
             store = self.flashpoint_store
             all_results = store.get_items()
             state.data["final_data"] = all_results
-            self._persist_flashpoints(all_results) #do it on s3 bucket
+            #self._persist_flashpoints(all_results) #do it on supabase s3 bucket
         else:
             all_results = self._load_all_persist_flashpoints()
 
@@ -806,7 +812,8 @@ class MASXOrchestrator:
             async with self.flashpoint_db_service as db:
                 # Step 1: Drop today's tables
                 try:
-                    await db.drop_daily_tables(datetime.utcnow())
+      
+                    await db.drop_daily_tables()
                     self.logger.info(
                         "[DB Reset] Dropped today's flashpoint and feed tables."
                     )

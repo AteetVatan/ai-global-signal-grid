@@ -59,18 +59,32 @@ class FeedRecord:
     sourcecountry: Optional[str] = None
     description: Optional[str] = None
     image: Optional[str] = None
+    title_en: Optional[str] = None #new
+    images: Optional[List[str]] = None #new
+    hostname: Optional[str] = None #new
+    content: Optional[str] = None #new
+    compressed_content: Optional[str] = None #new
+    summary: Optional[str] = None #new
+    entities: Optional[List[str]] = None #new
+    geo_entities: Optional[List[str]] = None #new    
+ 
 
 
 class FlashpointDatabaseService:
-    def __init__(self):
+    
+    FLASHPOINT_TABLE_PREFIX = "flash_point"
+    FEED_TABLE_PREFIX = "feed_entries"
+
+    
+    def __init__(self, date: Optional[datetime] = None):
+        self.date = date or datetime.utcnow()
         self.settings = get_settings()
         self.logger = get_service_logger("FlashpointDatabaseService")
         self.client: Optional[Client] = None  # Supabase client
         self.pool: Optional[asyncpg.Pool] = None  # asyncpg pool
         self._connection_params = {}
-        self._initialize_connection()
-        self._create_required_tables()
-        #ateet
+        self._initialize_connection()        
+        self._create_required_tables()       
 
     def _initialize_connection(self):
         """Initialize database connection parameters."""
@@ -106,12 +120,12 @@ class FlashpointDatabaseService:
         
     def _create_required_tables(self):
         """Create required tables."""
-        try:
+        try:            
             #get daliy table name
-            flashpoint_table_name = self.get_daily_table_name("flash_point")            
+            flashpoint_table_name = self.get_daily_table_name(self.FLASHPOINT_TABLE_PREFIX)            
             #flashpoint_table_name ='flash_point_20250807'
             self.ensure_flashpoint_table_exists(flashpoint_table_name)            
-            feeds_table_name = self.get_daily_table_name("feed_entries")
+            feeds_table_name = self.get_daily_table_name(self.FEED_TABLE_PREFIX)
             #feeds_table_name ='feed_entries_20250807'
             self.ensure_feed_table_exists(feeds_table_name, flashpoint_table_name)
         except Exception as e:
@@ -180,7 +194,7 @@ class FlashpointDatabaseService:
         await self.disconnect()
 
     def get_daily_table_name(self, base: str, date: Optional[datetime] = None) -> str:
-        date = date or datetime.utcnow()
+        date = date or self.date
         return f"{base}_{date.strftime('%Y%m%d')}"
     
     def ensure_flashpoint_table_exists(self, table_name: str) -> None:
@@ -271,6 +285,14 @@ class FlashpointDatabaseService:
             sourcecountry TEXT,
             description TEXT,
             image TEXT,
+            title_en TEXT,
+            images TEXT[] DEFAULT '{{}}',
+            hostname TEXT,
+            content TEXT,
+            compressed_content TEXT,
+            summary TEXT,
+            entities JSONB,
+            geo_entities JSONB,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
@@ -313,7 +335,8 @@ class FlashpointDatabaseService:
         self, feed_table: str, flashpoint_table: str
     ):
         """
-        Ensures the feed table for the given day exists. Also creates a foreign key index on flashpoint_id.
+        Ensures the feed table for the given day exists.
+        Adds foreign key index on flashpoint_id and required RLS policies.
         """
         with measure_execution_time(f"ensure_feed_table_exists_async: {feed_table}"):
             create_table_query = f"""
@@ -328,6 +351,14 @@ class FlashpointDatabaseService:
                 sourcecountry TEXT,
                 description TEXT,
                 image TEXT,
+                title_en TEXT,
+                images TEXT[] DEFAULT '{{}}',
+                hostname TEXT,
+                content TEXT,
+                compressed_content TEXT,
+                summary TEXT,
+                entities JSONB,
+                geo_entities JSONB,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             );
@@ -357,14 +388,18 @@ class FlashpointDatabaseService:
             END
             $$;
             """
+
             rls_policies = self.__get_all_rls_policies_cmd(feed_table)
+
             async with self.pool.acquire() as conn:
                 await conn.execute(create_table_query)
                 await conn.execute(create_index_query)
                 await conn.execute(alter_fk_if_needed_query)
                 for policy in rls_policies:
                     await conn.execute(policy)
-            self.logger.info(f"Feed table ensured: {feed_table}")       
+
+            self.logger.info(f"Feed table ensured: {feed_table}")
+       
         
 
     async def store_flashpoint(self, fp: FlashpointRecord, run_id: str) -> str:
@@ -384,7 +419,7 @@ class FlashpointDatabaseService:
                     raise DatabaseException("Supabase client not connected")
 
                 # Step 1: Determine daily table name
-                table_name = self.get_daily_table_name("flash_point")
+                table_name = self.get_daily_table_name(self.FLASHPOINT_TABLE_PREFIX)
 
                 # Step 2: Ensure the table exists (Postgres side)
                 await self.ensure_flashpoint_table_exists_async(table_name)
@@ -433,8 +468,9 @@ class FlashpointDatabaseService:
             if not self.client:
                 raise DatabaseException("Supabase client not connected")
 
-            feed_table = self.get_daily_table_name("feed_entries")
-            flashpoint_table = self.get_daily_table_name("flash_point")
+
+            feed_table = self.get_daily_table_name(self.FEED_TABLE_PREFIX)
+            flashpoint_table = self.get_daily_table_name(self.FLASHPOINT_TABLE_PREFIX)
             await self.ensure_feed_table_exists_async(feed_table, flashpoint_table)
 
             # Run sync DDL
@@ -501,7 +537,7 @@ class FlashpointDatabaseService:
             self.logger.error(f"store_feed_entries() failed: {e}")
             raise DatabaseException(str(e))
 
-    async def drop_daily_tables(self, date: Optional[datetime] = None) -> None:
+    async def drop_daily_tables(self) -> None:
         """
         Drops the daily flashpoint and feed tables for the given date if they exist.
         Used for cleanup or test resets.
@@ -513,8 +549,8 @@ class FlashpointDatabaseService:
             if not self.pool:
                 raise DatabaseException("PostgreSQL pool not initialized")
 
-            flashpoint_table = self.get_daily_table_name("flash_point", date)
-            feed_table = self.get_daily_table_name("feed_entries", date)
+            flashpoint_table = self.get_daily_table_name(self.FLASHPOINT_TABLE_PREFIX)
+            feed_table = self.get_daily_table_name(self.FEED_TABLE_PREFIX)
 
             async with self.pool.acquire() as conn:
                 # Drop feed table first due to FK constraint

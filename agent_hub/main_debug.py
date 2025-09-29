@@ -23,6 +23,7 @@ from app.workflows.orchestrator import MASXOrchestrator
 from app.core.state import MASXState
 import sys
 import json
+from datetime import datetime
 
 # Configure logging for debug
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
@@ -30,7 +31,9 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(mes
 
 def main():
     print("[DEBUG] MASX Global Signal Generator Agentic AI Debug Entrypoint")
-    orchestrator = MASXOrchestrator()
+    date = "20250930" #debug
+    date = datetime.strptime(date, "%Y%m%d")
+    orchestrator = MASXOrchestrator(date=date, debug=True)
 
     # Optionally load input data from a file or stdin
     input_data = {}
