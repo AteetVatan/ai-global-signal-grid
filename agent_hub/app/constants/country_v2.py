@@ -16,6 +16,7 @@
 #
 # Contact: ab@masxai.com | MASXAI.com
 
+import os
 import json
 from typing import Dict, List, Optional, Any
 
@@ -166,13 +167,14 @@ class CountryV2:
 
 class CountryV2Manager:
     _filepath = "app/constants/countriesV2.json"
-
+    
     def __init__(self):
         self._filepath = self._filepath
         self._countries: Dict[str, CountryV2] = {}
+        self._finalize_filepath()
         self._load_countries()
 
-    def _load_countries(self):
+    def _load_countries(self):      
         with open(self._filepath, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
             self._countries = {}
@@ -196,3 +198,9 @@ class CountryV2Manager:
 
     def reload(self):
         self._load_countries()
+        
+    def _finalize_filepath(self):         
+        if not os.path.isfile(self._filepath):
+            self._filepath = "agent_hub/app/constants/countriesV2.json"
+            if not os.path.isfile(self._filepath):
+                self._filepath = "constants/countriesV2.json"
