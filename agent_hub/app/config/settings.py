@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     require_api_key: bool = Field(
         default=False, description="Require API key for all endpoints"
     )
+    
+    # Feed ETL Trigger API Key
+    etl_services_deployed: int = Field(default=1, description="Feed ETL Trigger Base URL")
+    etl_base_url: str = Field(default="https://masxaietlcpupipeline-production.up.railway.app", description="Feed ETL Trigger Base URL")
+    etl_base_url_prefix: str = Field(default="https://masxaietlcpupipeline", description="Feed ETL Trigger Base URL")
+    etl_base_url_suffix: str = Field(default="-production.up.railway.app", description="Feed ETL Trigger Base URL")
+    etl_end_point_all: str = Field(default="/feed/process", description="Feed ETL Trigger End Point")
+    etl_end_point_by_article_ids: str = Field(default="/feed/process/article_id", description="Feed ETL Trigger End Point by Article IDs")
 
     # Pydantic Settings to load .env file
     model_config = SettingsConfigDict(

@@ -24,14 +24,30 @@ from app.core.state import MASXState
 import sys
 import json
 from datetime import datetime
-
+from app.external.feed_etl_trigger_client import FeedETLTriggerClient
+from app.services.flashpoint_db_service import FlashpointDatabaseService
+import asyncio
 # Configure logging for debug
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
 
 
 def main():
+    
+    #test
+    #invoke CPU ETL PROCESS
+    date = "20250702" #debug 20250701 is 2025-07-01, 20250930 is 2025-09-30
+    date = datetime.strptime(date, "%Y%m%d")
+    
+    flashpoint_db_service = FlashpointDatabaseService(date, create_tables=False)
+    asyncio.run(flashpoint_db_service.connect())
+    result = asyncio.run(FeedETLTriggerClient.trigger_feed_etl_by_article_ids(date, flashpoint_db_service, "masxai"))
+    print(f"CPU ETL PROCESS triggered for date: 2025-07-01")
+    
+    
+    return
+    
     print("[DEBUG] MASX Global Signal Generator Agentic AI Debug Entrypoint")
-    date = "20250930" #debug
+    date = "20250701" #debug 20250701 is 2025-07-01, 20250930 is 2025-09-30
     date = datetime.strptime(date, "%Y%m%d")
     orchestrator = MASXOrchestrator(date=date, debug=True)
 

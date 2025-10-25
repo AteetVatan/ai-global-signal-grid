@@ -58,6 +58,7 @@ from ..services import (
     FlashpointRecord,
     FeedRecord,
 )
+from ..external import FeedETLTriggerClient
 
 
 nest_asyncio.apply()
@@ -81,11 +82,19 @@ class MASXOrchestrator:
         self.logger = get_workflow_logger("MASXOrchestrator")
         self.agents = {}
         self.workflows = {}
-        self.flashpoint_db_service = FlashpointDatabaseService(date)
+        self.date = date or datetime.utcnow()        
+        # date = self.date.strftime("%Y-%m-%d")
+        # FeedETLTriggerClient.trigger_feed_etl(date, "masxai")
+        # self.logger.info(f"CPU ETL PROCESS triggered for date: {date}")
+        self.flashpoint_db_service = FlashpointDatabaseService(self.date)
         self._initialize_agents()
         self.flashpoint_store = FlashpointStore()
         # self.ping_apis_service = PingApisService()        
         self.workflow_id = ""
+        
+        
+
+            
 
     def _initialize_agents(self):
         """Initialize all available agents."""
@@ -1120,6 +1129,11 @@ class MASXOrchestrator:
             self.logger.error(f"Workflow completed with errors: {state.errors}")
         else:
             self.logger.info("Workflow completed successfully")
+
+            #invoke CPU ETL PROCESS
+            self.logger.info(f"CPU ETL PROCESS triggered for date: {self.date.strftime('%Y-%m-%d')}")
+            result = asyncio.run(FeedETLTriggerClient.trigger_feed_etl_by_article_ids(self.date, self.flashpoint_db_service, "masxai"))         
+            self.logger.info(f"CPU ETL PROCESS result: {result}")
 
         log_workflow_step(
             self.logger,

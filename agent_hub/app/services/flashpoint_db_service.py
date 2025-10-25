@@ -76,7 +76,7 @@ class FlashpointDatabaseService:
     FEED_TABLE_PREFIX = "feed_entries"
 
     
-    def __init__(self, date: Optional[datetime] = None):
+    def __init__(self, date: Optional[datetime] = None, create_tables: bool = True):
         self.date = date or datetime.utcnow()
         self.settings = get_settings()
         self.logger = get_service_logger("FlashpointDatabaseService")
@@ -84,7 +84,8 @@ class FlashpointDatabaseService:
         self.pool: Optional[asyncpg.Pool] = None  # asyncpg pool
         self._connection_params = {}
         self._initialize_connection()        
-        self._create_required_tables()       
+        if create_tables:
+            self._create_required_tables()       
 
     def _initialize_connection(self):
         """Initialize database connection parameters."""
@@ -536,6 +537,62 @@ class FlashpointDatabaseService:
         except Exception as e:
             self.logger.error(f"store_feed_entries() failed: {e}")
             raise DatabaseException(str(e))
+        
+    async def read_feed_entry_ids_with_flashpoint(self, date: Optional[datetime] = None) -> List[dict]:
+        """
+        Reads 'id' and 'flashpoint_id' columns from today's feed table, handling >1000 rows via pagination.
+
+        Returns:
+            List[dict]: A list of records, each containing {'id': ..., 'flashpoint_id': ...}
+        """
+        try:
+            if not self.client:
+                raise DatabaseException("Supabase client not connected")
+
+            feed_table = self.get_daily_table_name(self.FEED_TABLE_PREFIX, date)
+            self.logger.info(f"Reading feed entry IDs from: {feed_table}")
+
+            records: List[dict] = []
+            batch_size = 1000
+            offset = 0
+
+            while True:
+                # Paginated query
+                result = (
+                    self.client.table(feed_table)
+                    .select("id, flashpoint_id")                   
+                    .or_("content.is.null,content.eq.''") #only get records that are not processed
+                    .range(offset, offset + batch_size - 1)
+                    .execute()
+                )
+
+                data = result.data or []
+                if not data:
+                    break
+
+                for row in data:
+                    if row.get("id") and row.get("flashpoint_id"):
+                        records.append({
+                            "id": row["id"],
+                            "flashpoint_id": row["flashpoint_id"]
+                        })
+
+                self.logger.info(f"Fetched batch: {len(data)} (offset {offset})")
+
+                # Stop when last batch smaller than full page
+                if len(data) < batch_size:
+                    break
+
+                offset += batch_size
+
+            self.logger.info(f"Total retrieved {len(records)} records from {feed_table}")
+            return records
+
+        except Exception as e:
+            self.logger.error(f"read_feed_entry_ids_with_flashpoint() failed: {e}")
+            raise DatabaseException(str(e))
+   
+        
 
     async def drop_daily_tables(self) -> None:
         """
