@@ -192,8 +192,8 @@ class FeedETLTriggerClient:
         articles_ids: List[str],
         trigger: str = "masxai",
         max_concurrent: int = 30,          
-        batch_size: int = 5,              
-        per_batch_timeout: int = 3000,      
+        batch_size: int = 10,              
+        per_batch_timeout: int = 2000,# 2000 seconds per batch    
     ) -> Dict[str, Any]:
         if not date:
             raise ValueError("Date is required")

@@ -1131,12 +1131,12 @@ class MASXOrchestrator:
             self.logger.info("Workflow completed successfully")
 
             #invoke CPU ETL PROCESS
-            fresh_db_service = FlashpointDatabaseService(self.date, create_tables=False)
-            if not fresh_db_service.client:
-                asyncio.run(fresh_db_service.connect())
-            self.logger.info(f"CPU ETL PROCESS triggered for date: {self.date.strftime('%Y-%m-%d')}")
-            result = asyncio.run(FeedETLTriggerClient.trigger_feed_etl_by_article_ids(self.date, fresh_db_service, "masxai"))
-            self.logger.info(f"CPU ETL PROCESS result: {result}")
+            #fresh_db_service = FlashpointDatabaseService(self.date, create_tables=False)
+            #if not fresh_db_service.client:
+            #    asyncio.run(fresh_db_service.connect())
+            #self.logger.info(f"CPU ETL PROCESS triggered for date: {self.date.strftime('%Y-%m-%d')}")
+            #result = asyncio.run(FeedETLTriggerClient.trigger_feed_etl_by_article_ids(self.date, fresh_db_service, "masxai"))
+            #self.logger.info(f"CPU ETL PROCESS result: {result}")
 
         log_workflow_step(
             self.logger,
