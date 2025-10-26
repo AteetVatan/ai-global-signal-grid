@@ -24,6 +24,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from itertools import islice
+from collections import defaultdict
 import time
 import random
 import asyncio
@@ -39,21 +40,32 @@ class FeedETLTriggerClient:
     ETL_BASE_URL_SUFFIX=settings.etl_base_url_suffix
     ETL_SERVICES_DEPLOYED=settings.etl_services_deployed
     
+    debug_mode = settings.debug
     
-    ETL_BASE_URLS = [
-        "https://masxaietlcpupipeline1-production.up.railway.app/feed/process/batch_articles",
-        "https://masxaietlcpupipeline2-production.up.railway.app/feed/process/batch_articles",
-        "https://masxaietlcpupipeline3-production.up.railway.app/feed/process/batch_articles",
-        "https://masxaietlcpupipeline4-production.up.railway.app/feed/process/batch_articles",
-        "https://masxaietlcpupipeline5-production.up.railway.app/feed/process/batch_articles",
-        "https://masxaietlcpupipeline6-production.up.railway.app/feed/process/batch_articles",
-    ]
+    if debug_mode:
+        ETL_BASE_URLS = [
+            "https://masxaietlcpupipeline1-production.up.railway.app/feed/process/batch_articles",
+            "https://masxaietlcpupipeline2-production.up.railway.app/feed/process/batch_articles",
+            "https://masxaietlcpupipeline3-production.up.railway.app/feed/process/batch_articles",
+            "https://masxaietlcpupipeline4-production.up.railway.app/feed/process/batch_articles",
+            "https://masxaietlcpupipeline5-production.up.railway.app/feed/process/batch_articles",
+            "https://masxaietlcpupipeline6-production.up.railway.app/feed/process/batch_articles",
+        ]
+    else:
+        ETL_BASE_URLS = [
+            "https://masxaietlcpupipeline1-production.railway.internal/feed/process/batch_articles",
+            "https://masxaietlcpupipeline2-production.railway.internal/feed/process/batch_articles",
+            "https://masxaietlcpupipeline3-production.railway.internal/feed/process/batch_articles",
+            "https://masxaietlcpupipeline4-production.railway.internal/feed/process/batch_articles",
+            "https://masxaietlcpupipeline5-production.railway.internal/feed/process/batch_articles",
+            "https://masxaietlcpupipeline6-production.railway.internal/feed/process/batch_articles",
+        ]
     
 
     END_POINT_ALL = settings.etl_end_point_all
     END_POINT_BY_ARTICLE_IDS = settings.etl_end_point_by_article_ids
     API_KEY = settings.gsg_api_key
-#read_daily_feed_entry_ids
+
 
     @staticmethod
     def trigger_feed_etl(date: Optional[datetime] = None, trigger: str = "masxai") -> dict:
@@ -88,6 +100,7 @@ class FeedETLTriggerClient:
         except requests.exceptions.RequestException as e:
             logging.error(f"Feed trigger failed: {e}")
             return {"error": str(e)}
+ 
         
     @staticmethod
     async def trigger_feed_etl_by_article_ids(
@@ -103,18 +116,45 @@ class FeedETLTriggerClient:
         try:
             if not date:
                 raise ValueError("Date is required")
-
+            
             date_str = date.strftime("%Y-%m-%d")
             logging.info(f"🚀 Starting ETL trigger for {date_str}")
 
             # Initialize DB service if not provided
             if not flashpoint_db_service:
-                flashpoint_db_service = FlashpointDatabaseService(date)
+                flashpoint_db_service = FlashpointDatabaseService(date, create_tables=False)
+            if not flashpoint_db_service.client:
+                await flashpoint_db_service.connect()
+                
+            
+            # --- Warm-up phase ---
+            async def warmup_service(session, base_url: str, retries: int = 5):
+                health_url = base_url.replace("/feed/process/batch_articles", "/health")
+                headers = {"X-API-Key": FeedETLTriggerClient.API_KEY}
+                for attempt in range(1, retries + 1):
+                    try:
+                        async with session.get(health_url, headers=headers, timeout=60) as resp:
+                            if resp.status == 200:
+                                logging.info(f"[{base_url}] Warmup OK (attempt {attempt})")
+                                return True
+                            else:
+                                logging.warning(f"[{base_url}] Warmup bad status {resp.status}")
+                    except Exception as e:
+                        logging.warning(f"[{base_url}] Warmup attempt {attempt} failed: {type(e).__name__} ({e})")
+                    await asyncio.sleep(10 * attempt)
+                return False
+               
+                
+            async with aiohttp.ClientSession() as session:
+                await asyncio.gather(*(warmup_service(session, url) for url in FeedETLTriggerClient.ETL_BASE_URLS))
+            logging.info("Warm-up complete. Waiting 30s for replicas to boot…")
+            await asyncio.sleep(30)  
 
             # --- Fetch all unprocessed feed entries ---
             entry_records: List[Dict[str, str]] = await flashpoint_db_service.read_feed_entry_ids_with_flashpoint(date=date)
             total_articles = len(entry_records)
             logging.info(f"Found {total_articles} articles to process")
+            
 
             if total_articles == 0:
                 return {"status": "no_records", "message": "No feed entries found"}
@@ -151,49 +191,59 @@ class FeedETLTriggerClient:
         date: Optional[datetime],
         articles_ids: List[str],
         trigger: str = "masxai",
-        max_concurrent: int = 20,          # 20 total active workers (4 services × 5 replicas)
-        batch_size: int = 100,               # each batch ~1–2 min
-        per_batch_timeout: int = 300,      # 5 min hard timeout
+        max_concurrent: int = 30,          
+        batch_size: int = 5,              
+        per_batch_timeout: int = 3000,      
     ) -> Dict[str, Any]:
         if not date:
             raise ValueError("Date is required")
         date_str = date.strftime("%Y-%m-%d")
 
-        # Split into batches of N
+        trigger = ""  # no background
+
         def chunk_list(lst, size):
             for i in range(0, len(lst), size):
                 yield lst[i:i + size]
 
         article_batches = list(chunk_list(articles_ids, batch_size))
         total_batches = len(article_batches)
-        results: List[Dict[str, Any]] = []
+        print(f"[INFO] Dispatching {total_batches} total batches with max {max_concurrent} concurrent requests")
+
         queue: asyncio.Queue = asyncio.Queue()
+        retry_counter: Dict[int, int] = defaultdict(int)
+        results: List[Dict[str, Any]] = []
+
+        # preload all batches
         for idx, batch in enumerate(article_batches):
             await queue.put((idx, batch))
 
-        # retry helper
-        def next_backoff(attempt: int):
-            return min(1.5 ** attempt + random.uniform(0, 1.5), 15)
+        # -----------------------------
+        # Helper: exponential backoff
+        # -----------------------------
+        def compute_backoff(attempt: int) -> float:
+            base = 2 ** (attempt - 1)
+            jitter = random.uniform(0.5, 1.5)
+            return min(base * jitter, 30)
 
+        # -----------------------------
+        # POST helper with retry count
+        # -----------------------------
         async def post_payload(session, url, payload, batch_index, attempt=1):
             headers = {"X-API-Key": FeedETLTriggerClient.API_KEY}
-            start = time.perf_counter()            
+            start = time.perf_counter()
+            await asyncio.sleep(random.uniform(1, 3))  # small stagger
             try:
-                #await asyncio.sleep(random.uniform(0, 1))
-                async with session.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=3600,
-                ) as resp:
+                async with session.post(url, json=payload, headers=headers, timeout=per_batch_timeout) as resp:
                     try:
                         data = await resp.json()
                     except Exception:
                         data = {"text": await resp.text()}
-                    elapsed = round(time.perf_counter() - start, 3)
+                    elapsed = round(time.perf_counter() - start, 2)
                     status = "completed" if resp.status == 200 else "failed"
-                    print(f"[INFO] Batch {batch_index+1}/{total_batches} → {status.upper()} "
-                          f"({resp.status}) in {elapsed}s | {url}")
+
+                    print(f"[{attempt}/4] Batch {batch_index+1}/{total_batches} → {status.upper()} ({resp.status}) "
+                        f"in {elapsed}s | {url}")
+
                     return {
                         "url": url,
                         "batch_index": batch_index,
@@ -201,62 +251,76 @@ class FeedETLTriggerClient:
                         "status_code": resp.status,
                         "response": data,
                         "processing_time": elapsed,
+                        "attempt": attempt,
                     }
+
             except Exception as e:
-                if attempt < 3:
-                    wait = next_backoff(attempt)
-                    print(f"[WARN] {url} retry {attempt+1} for batch {batch_index+1}: {e} "
-                          f"(sleep {wait:.1f}s)")
-                    await asyncio.sleep(wait)
-                    return await post_payload(session, url, payload, batch_index, attempt + 1)
-                print(f"[ERROR] {url} failed after 3 retries: {e}")
+                elapsed = round(time.perf_counter() - start, 2)
+                print(f"[ERROR] Batch {batch_index+1}/{total_batches} failed at attempt {attempt} "
+                    f"after {elapsed}s | {type(e).__name__}: {e}")
                 return {
                     "url": url,
                     "batch_index": batch_index,
                     "status": "failed",
                     "error": str(e),
+                    "processing_time": elapsed,
+                    "attempt": attempt,
                 }
 
+        # -----------------------------
+        # Worker logic with requeue
+        # -----------------------------
         async def worker(worker_id: int):
             connector = aiohttp.TCPConnector(force_close=True, ttl_dns_cache=60)
             async with aiohttp.ClientSession(connector=connector) as session:
                 while True:
                     item = await queue.get()
-                    try:
-                        if item is None:
-                            return
-                        batch_index, batch = item
-                        # Select service URL in round-robin manner
-                        url = FeedETLTriggerClient.ETL_BASE_URLS[batch_index % len(FeedETLTriggerClient.ETL_BASE_URLS)]
-                        payload = {"date": date_str, "articles_ids": batch, "trigger": trigger}
-
-                        try:
-                            res = await asyncio.wait_for(
-                                post_payload(session, url, payload, batch_index),
-                                timeout=per_batch_timeout,
-                            )
-                        except asyncio.TimeoutError:
-                            print(f"[TIMEOUT] Batch {batch_index+1} > {per_batch_timeout}s. Marking failed.")
-                            res = {
-                                "url": url,
-                                "batch_index": batch_index,
-                                "status": "failed",
-                                "error": f"Hard timeout ({per_batch_timeout}s)",
-                            }
-                        results.append(res)
-                    finally:
+                    if item is None:
                         queue.task_done()
+                        return
 
-        # Launch 20 workers
+                    batch_index, batch = item
+                    retry_counter[batch_index] += 1
+                    attempt = retry_counter[batch_index]
+                    url = FeedETLTriggerClient.ETL_BASE_URLS[batch_index % len(FeedETLTriggerClient.ETL_BASE_URLS)]
+                    payload = {"date": date_str, "articles_ids": batch, "trigger": trigger}
+
+                    res = await post_payload(session, url, payload, batch_index, attempt)
+                    results.append(res)
+
+                    # Evaluate success condition
+                    resp = res.get("response", {})
+                    is_successful = (
+                        res["status"] == "completed"
+                        and isinstance(resp, dict)
+                        and resp.get("status") == "completed"
+                        and resp.get("successful", 0) > 2
+                    )
+
+                    if is_successful:
+                        print(f"[WORKER {worker_id}] ✅ Batch {batch_index+1} succeeded on attempt {attempt}.")
+                        queue.task_done()
+                    else:
+                        if attempt < 4:
+                            backoff = compute_backoff(attempt)
+                            print(f"[WORKER {worker_id}] 🔁⚠️ Batch {batch_index+1} failed (attempt {attempt}) — requeuing in {backoff:.1f}s...")
+                            queue.task_done()
+                            await asyncio.sleep(backoff)
+                            await queue.put((batch_index, batch))  # requeue the same batch
+                        else:
+                            print(f"[WORKER {worker_id}] ❌ Batch {batch_index+1} failed after 4 attempts. Giving up.")
+                            queue.task_done()
+
+        # -----------------------------
+        # Launch workers
+        # -----------------------------
         workers = [asyncio.create_task(worker(i + 1)) for i in range(max_concurrent)]
-
-        print(f"[DEBUG] Dispatching {total_batches} batches across 4 services × 5 replicas...")
         await queue.join()
         print("[DEBUG] All batches processed; stopping workers...")
 
-        for _ in workers:
+        for _ in range(max_concurrent):
             await queue.put(None)
-        await asyncio.gather(*workers)
+        await asyncio.gather(*workers, return_exceptions=True)
 
         successful = sum(1 for r in results if r.get("status") == "completed")
         failed = sum(1 for r in results if r.get("status") == "failed")
@@ -270,8 +334,13 @@ class FeedETLTriggerClient:
             "timestamp": datetime.utcnow().isoformat(),
             "details": results,
         }
+
         print(f"[SUMMARY] {successful}/{total_batches} batches completed successfully.")
         return summary
+
+
+
+
 
 
     

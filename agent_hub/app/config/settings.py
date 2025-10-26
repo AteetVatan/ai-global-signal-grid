@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # Environment Configuration
     environment: str = Field(default="development", description="Environment name")
-    debug: bool = Field(default=True, description="Enable debug mode")
+    debug: bool = Field(default=False, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
 
     # Flashpoint Configuration
